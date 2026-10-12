@@ -1,13 +1,14 @@
-use std::fs::{self, DirBuilder, OpenOptions};
-use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
-use std::path::{Path, PathBuf};
+use std::fmt;
+use std::path::Path;
+use std::str::FromStr;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use sha2::{Digest, Sha256};
+
+use crate::storage;
 
 /// Ficheiro com a chave privada e o certificado, em PEM.
 const IDENTITY_FILE: &str = "identity.pem";
@@ -30,7 +31,7 @@ impl Identity {
             return Self::load(&path);
         }
         let pem = generate_pem(device_name)?;
-        save(dir, &path, &pem)?;
+        storage::write_private(&path, pem.as_bytes())?;
         Self::load(&path)
     }
 
@@ -44,36 +45,72 @@ impl Identity {
         Ok(Self { cert, key })
     }
 
-    /// Impressão digital SHA-256 do certificado, em hexadecimal.
-    pub fn fingerprint(&self) -> String {
-        fingerprint(&self.cert)
+    pub fn fingerprint(&self) -> Fingerprint {
+        Fingerprint::of(&self.cert)
     }
 
     /// ID estável do dispositivo, derivado do certificado.
     pub fn device_id(&self) -> String {
-        self.fingerprint()[..DEVICE_ID_LEN].to_string()
+        self.fingerprint().device_id()
     }
 }
 
-/// Impressão digital SHA-256 de um certificado, em hexadecimal minúsculo.
-pub fn fingerprint(cert: &CertificateDer<'_>) -> String {
-    Sha256::digest(cert.as_ref())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+/// Impressão digital SHA-256 de um certificado (DER). Mostrada e guardada em
+/// hexadecimal minúsculo.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Fingerprint([u8; 32]);
+
+impl Fingerprint {
+    pub fn of(cert: &CertificateDer<'_>) -> Self {
+        Self(Sha256::digest(cert.as_ref()).into())
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    pub fn device_id(&self) -> String {
+        self.to_string()[..DEVICE_ID_LEN].to_string()
+    }
 }
 
-/// Diretório onde a identidade é guardada: `$XDG_CONFIG_HOME/kizuna`
-/// (dentro de um Flatpak, aponta para `~/.var/app/<id>/config`).
-pub fn default_dir() -> Result<PathBuf> {
-    let base = match std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from) {
-        Some(dir) if dir.is_absolute() => dir,
-        _ => match std::env::var_os("HOME") {
-            Some(home) => PathBuf::from(home).join(".config"),
-            None => bail!("nem XDG_CONFIG_HOME nem HOME estão definidos"),
-        },
-    };
-    Ok(base.join("kizuna"))
+impl fmt::Display for Fingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl fmt::Debug for Fingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Fingerprint({self})")
+    }
+}
+
+impl FromStr for Fingerprint {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        if s.len() != 64 || s.bytes().any(|b| b.is_ascii_uppercase()) {
+            return Err(anyhow!("impressão digital inválida: {s:?}"));
+        }
+        let mut bytes = [0; 32];
+        hex::decode_to_slice(s, &mut bytes)
+            .map_err(|_| anyhow!("impressão digital inválida: {s:?}"))?;
+        Ok(Self(bytes))
+    }
+}
+
+impl serde::Serialize for Fingerprint {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Fingerprint {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 /// Gera uma chave ECDSA P-256 e um certificado autoassinado, em PEM.
@@ -90,32 +127,10 @@ fn generate_pem(device_name: &str) -> Result<String> {
     Ok(format!("{}{}", key_pair.serialize_pem(), cert.pem()))
 }
 
-/// Escreve o ficheiro de forma atómica, legível só pelo utilizador.
-fn save(dir: &Path, path: &Path, pem: &str) -> Result<()> {
-    DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-        .with_context(|| format!("falha a criar {}", dir.display()))?;
-
-    let tmp = path.with_extension("pem.tmp");
-    let _ = fs::remove_file(&tmp);
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)
-        .with_context(|| format!("falha a criar {}", tmp.display()))?;
-    file.write_all(pem.as_bytes())?;
-    file.sync_all()?;
-    fs::rename(&tmp, path).with_context(|| format!("falha a gravar {}", path.display()))?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    use std::fs;
 
     #[test]
     fn gera_na_primeira_execucao_e_reutiliza_depois() {
@@ -127,22 +142,6 @@ mod tests {
 
         assert_eq!(first.fingerprint(), second.fingerprint());
         assert_eq!(first.key.secret_der(), second.key.secret_der());
-    }
-
-    #[test]
-    fn chave_so_legivel_pelo_utilizador() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("kizuna");
-        Identity::load_or_create(&config, "pc-teste").unwrap();
-
-        let file_mode = fs::metadata(config.join(IDENTITY_FILE))
-            .unwrap()
-            .permissions()
-            .mode();
-        let dir_mode = fs::metadata(&config).unwrap().permissions().mode();
-        assert_eq!(file_mode & 0o777, 0o600);
-        assert_eq!(dir_mode & 0o777, 0o700);
-        assert!(!config.join("identity.pem.tmp").exists());
     }
 
     #[test]
@@ -159,10 +158,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let identity = Identity::load_or_create(dir.path(), "pc").unwrap();
 
-        let fp = identity.fingerprint();
+        let fp = identity.fingerprint().to_string();
         assert_eq!(fp.len(), 64);
         assert!(fp.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
         assert_eq!(identity.device_id(), fp[..DEVICE_ID_LEN]);
+        assert_eq!(fp.parse::<Fingerprint>().unwrap(), identity.fingerprint());
+    }
+
+    #[test]
+    fn impressao_digital_invalida_e_recusada() {
+        let ok = "ab".repeat(32);
+        assert!(ok.parse::<Fingerprint>().is_ok());
+        assert!(ok.to_uppercase().parse::<Fingerprint>().is_err());
+        assert!(ok[..62].parse::<Fingerprint>().is_err());
+        assert!("zz".repeat(32).parse::<Fingerprint>().is_err());
     }
 
     #[test]

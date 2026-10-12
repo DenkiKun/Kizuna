@@ -43,4 +43,4 @@ Contributions are welcome. Please open an issue before making large changes.
 
 ## License
 
-GPL-3.0-or-later (to be confirmed before the first release).
+GPL-3.0-or-later. See [LICENSE](LICENSE).

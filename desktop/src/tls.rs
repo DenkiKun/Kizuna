@@ -16,28 +16,28 @@ use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
 
 use crate::identity::{Fingerprint, Identity};
 
-/// Tempo máximo para um cliente concluir o handshake TLS.
+/// Maximum time for a client to complete the TLS handshake.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Servidor TCP que só aceita TLS 1.3, com o certificado autoassinado deste
-/// dispositivo, e exige um certificado ao cliente.
+/// TCP server that only accepts TLS 1.3, with this device's self-signed
+/// certificate, and requires a certificate from the client.
 pub struct Server {
     listener: TcpListener,
     acceptor: TlsAcceptor,
 }
 
-/// Ligação TCP aceite, antes do handshake TLS.
+/// Accepted TCP connection, before the TLS handshake.
 pub struct Incoming {
     stream: TcpStream,
     peer: SocketAddr,
     acceptor: TlsAcceptor,
 }
 
-/// Ligação TLS estabelecida (como servidor ou como cliente).
+/// Established TLS connection (as server or as client).
 pub struct Connection {
     pub stream: TlsStream<TcpStream>,
-    /// Impressão digital do certificado do outro lado. É com ela que a camada
-    /// de emparelhamento decide se o dispositivo é aceite.
+    /// Fingerprint of the other side's certificate. The pairing layer uses it
+    /// to decide whether the device is accepted.
     pub peer_fingerprint: Fingerprint,
 }
 
@@ -46,7 +46,7 @@ impl Server {
         let config = server_config(identity)?;
         let listener = TcpListener::bind(addr)
             .await
-            .with_context(|| format!("falha a escutar em {addr}"))?;
+            .with_context(|| format!("failed to listen on {addr}"))?;
         Ok(Self {
             listener,
             acceptor: TlsAcceptor::from(Arc::new(config)),
@@ -57,8 +57,8 @@ impl Server {
         Ok(self.listener.local_addr()?)
     }
 
-    /// Aceita a próxima ligação TCP. O handshake é feito à parte, com
-    /// [`Incoming::handshake`], para um cliente lento não bloquear os outros.
+    /// Accepts the next TCP connection. The handshake is done separately, with
+    /// [`Incoming::handshake`], so a slow client does not block the others.
     pub async fn accept(&self) -> Result<Incoming> {
         let (stream, peer) = self.listener.accept().await?;
         Ok(Incoming {
@@ -81,8 +81,8 @@ impl Incoming {
     async fn handshake_within(self, timeout: Duration) -> Result<Connection> {
         let stream = tokio::time::timeout(timeout, self.acceptor.accept(self.stream))
             .await
-            .map_err(|_| anyhow!("handshake TLS expirou"))?
-            .context("handshake TLS falhou")?;
+            .map_err(|_| anyhow!("TLS handshake timed out"))?
+            .context("TLS handshake failed")?;
         let peer_fingerprint = peer_fingerprint(stream.get_ref().1)?;
         Ok(Connection {
             stream: TlsStream::Server(stream),
@@ -91,25 +91,25 @@ impl Incoming {
     }
 }
 
-/// Liga a outro dispositivo Kizuna, apresentando o certificado deste.
+/// Connects to another Kizuna device, presenting this device's certificate.
 ///
-/// O certificado do servidor não é validado aqui: quem chama tem de verificar
-/// `peer_fingerprint` (contra a lista de emparelhados, ou emparelhando).
+/// The server's certificate is not validated here: the caller must check
+/// `peer_fingerprint` (against the paired list, or by pairing).
 pub async fn connect(addr: SocketAddr, identity: &Identity) -> Result<Connection> {
     let config = client_config(Some(identity), &[&rustls::version::TLS13])?;
     let tcp = tokio::time::timeout(HANDSHAKE_TIMEOUT, TcpStream::connect(addr))
         .await
-        .map_err(|_| anyhow!("ligação a {addr} expirou"))?
-        .with_context(|| format!("falha a ligar a {addr}"))?;
-    // Os certificados não têm nomes; o SNI é fixo e ignorado.
-    let name = ServerName::try_from("kizuna").expect("nome válido");
+        .map_err(|_| anyhow!("connection to {addr} timed out"))?
+        .with_context(|| format!("failed to connect to {addr}"))?;
+    // Certificates have no names; the SNI is fixed and ignored.
+    let name = ServerName::try_from("kizuna").expect("valid name");
     let stream = tokio::time::timeout(
         HANDSHAKE_TIMEOUT,
         TlsConnector::from(Arc::new(config)).connect(name, tcp),
     )
     .await
-    .map_err(|_| anyhow!("handshake TLS expirou"))?
-    .context("handshake TLS falhou")?;
+    .map_err(|_| anyhow!("TLS handshake timed out"))?
+    .context("TLS handshake failed")?;
     let peer_fingerprint = peer_fingerprint(stream.get_ref().1)?;
     Ok(Connection {
         stream: TlsStream::Client(stream),
@@ -121,7 +121,7 @@ fn peer_fingerprint(state: &CommonState) -> Result<Fingerprint> {
     let cert = state
         .peer_certificates()
         .and_then(|certs| certs.first())
-        .ok_or_else(|| anyhow!("o outro lado não apresentou certificado"))?;
+        .ok_or_else(|| anyhow!("the other side did not present a certificate"))?;
     Ok(Fingerprint::of(cert))
 }
 
@@ -134,7 +134,7 @@ fn server_config(identity: &Identity) -> Result<ServerConfig> {
         .with_protocol_versions(&[&rustls::version::TLS13])?
         .with_client_cert_verifier(client_verifier)
         .with_single_cert(vec![identity.cert.clone()], identity.key.clone_key())
-        .context("certificado ou chave inválidos")?;
+        .context("invalid certificate or key")?;
     Ok(config)
 }
 
@@ -153,17 +153,17 @@ fn client_config(
     Ok(match identity {
         Some(id) => builder
             .with_client_auth_cert(vec![id.cert.clone()], id.key.clone_key())
-            .context("certificado ou chave inválidos")?,
+            .context("invalid certificate or key")?,
         None => builder.with_no_client_auth(),
     })
 }
 
-/// Aceita qualquer certificado do outro lado, incluindo autoassinados.
+/// Accepts any certificate from the other side, including self-signed ones.
 ///
-/// Os dispositivos não têm uma autoridade de certificação comum: a confiança
-/// vem do emparelhamento, que compara impressões digitais. Aqui o TLS garante
-/// apenas que o outro lado possui a chave privada do certificado que
-/// apresentou (a assinatura do handshake continua a ser verificada).
+/// Devices have no common certificate authority: trust comes from pairing,
+/// which compares fingerprints. Here TLS only guarantees that the other side
+/// holds the private key of the certificate it presented (the handshake
+/// signature is still verified).
 #[derive(Debug)]
 struct AnyCert {
     algorithms: WebPkiSupportedAlgorithms,
@@ -224,7 +224,7 @@ impl ClientCertVerifier for AnyCert {
         cert: &CertificateDer<'_>,
         dss: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, rustls::Error> {
-        // Nunca chamado: só é negociado TLS 1.3.
+        // Never called: only TLS 1.3 is negotiated.
         crypto::verify_tls12_signature(message, cert, dss, &self.algorithms)
     }
 
@@ -251,7 +251,7 @@ mod tests {
 
     fn identity() -> Identity {
         let dir = tempfile::tempdir().unwrap();
-        Identity::load_or_create(dir.path(), "teste").unwrap()
+        Identity::load_or_create(dir.path(), "test").unwrap()
     }
 
     async fn start_server() -> (Server, SocketAddr) {
@@ -262,7 +262,7 @@ mod tests {
         (server, addr)
     }
 
-    /// Cliente com versões de TLS e certificado à escolha.
+    /// Client with a choice of TLS versions and certificate.
     async fn raw_connect(
         addr: SocketAddr,
         client: Option<&Identity>,
@@ -277,7 +277,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handshake_tls13_com_certificados_dos_dois_lados() {
+    async fn tls13_handshake_with_certificates_on_both_sides() {
         let server_id = identity();
         let server = Server::bind("127.0.0.1:0".parse().unwrap(), &server_id)
             .await
@@ -298,9 +298,9 @@ mod tests {
             );
         }
 
-        // Uma mensagem JSON por linha, como em docs/PROTOCOL.md.
+        // One JSON message per line, as in docs/PROTOCOL.md.
         let msg = Message::ClipboardUpdate {
-            text: "olá".into()
+            text: "héllo".into(),
         };
         let line = serde_json::to_string(&msg).unwrap() + "\n";
         client.stream.write_all(line.as_bytes()).await.unwrap();
@@ -312,13 +312,13 @@ mod tests {
             .await
             .unwrap();
         match serde_json::from_str(&received).unwrap() {
-            Message::ClipboardUpdate { text } => assert_eq!(text, "olá"),
-            other => panic!("mensagem inesperada: {other:?}"),
+            Message::ClipboardUpdate { text } => assert_eq!(text, "héllo"),
+            other => panic!("unexpected message: {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn cliente_tls12_e_recusado() {
+    async fn tls12_client_is_rejected() {
         let (server, addr) = start_server().await;
         let client_id = identity();
 
@@ -330,41 +330,41 @@ mod tests {
             .await
             .unwrap()
             .err()
-            .expect("o servidor aceitou TLS 1.2");
+            .expect("the server accepted TLS 1.2");
         assert!(format!("{err:#}").contains("Tls12NotOffered"), "{err:#}");
     }
 
     #[tokio::test]
-    async fn cliente_sem_certificado_e_recusado() {
+    async fn client_without_certificate_is_rejected() {
         let (server, addr) = start_server().await;
 
         let accepted = tokio::spawn(async move { server.accept().await?.handshake().await });
-        // Em TLS 1.3 o cliente pode julgar o handshake concluído antes de o
-        // servidor o recusar; o que conta é o lado do servidor.
+        // In TLS 1.3 the client may consider the handshake complete before the
+        // server rejects it; what matters is the server side.
         let _client = raw_connect(addr, None, &[&rustls::version::TLS13]).await;
 
         let err = accepted
             .await
             .unwrap()
             .err()
-            .expect("o servidor aceitou o cliente");
+            .expect("the server accepted the client");
         assert!(
-            format!("{err:#}").contains("handshake TLS falhou"),
+            format!("{err:#}").contains("TLS handshake failed"),
             "{err:#}"
         );
     }
 
     #[tokio::test]
-    async fn cliente_que_nao_fala_tls_expira_sem_bloquear_o_servidor() {
+    async fn client_that_does_not_speak_tls_times_out_without_blocking_the_server() {
         let (server, addr) = start_server().await;
         let client_id = identity();
 
-        // Primeiro cliente abre o TCP e fica calado.
+        // The first client opens the TCP connection and stays silent.
         let _silent = TcpStream::connect(addr).await.unwrap();
         let silent = server.accept().await.unwrap();
         let silent_handshake = tokio::spawn(silent.handshake_within(Duration::from_millis(200)));
 
-        // Um segundo cliente continua a ser atendido entretanto.
+        // Meanwhile, a second client is still served.
         let accepted = tokio::spawn(async move { server.accept().await?.handshake().await });
         connect(addr, &client_id).await.unwrap();
         assert!(accepted.await.unwrap().is_ok());
@@ -373,7 +373,7 @@ mod tests {
             .await
             .unwrap()
             .err()
-            .expect("handshake devia expirar");
-        assert!(format!("{err}").contains("expirou"), "{err}");
+            .expect("the handshake should have timed out");
+        assert!(format!("{err}").contains("timed out"), "{err}");
     }
 }

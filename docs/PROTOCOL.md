@@ -1,83 +1,83 @@
-# Protocolo (rascunho v0)
+# Protocol (draft v0)
 
-## Camadas
+## Layers
 
-1. **Descoberta**: anúncio mDNS `_kizuna._tcp.local` com nome do dispositivo e porta.
-2. **Transporte**: TCP com TLS 1.3. Cada dispositivo gera um par de chaves/certificado autoassinado na primeira execução.
-3. **Emparelhamento**: confirmação manual de um código de 6 dígitos derivado dos dois certificados e de nonces aleatórios (ver abaixo). Só dispositivos emparelhados são aceites depois.
-4. **Mensagens**: JSON delimitado por novas linhas, cada uma com `type` e `body`.
+1. **Discovery**: mDNS announcement of `_kizuna._tcp.local` with the device name and port.
+2. **Transport**: TCP with TLS 1.3. Each device generates a key pair and a self-signed certificate on first run.
+3. **Pairing**: manual confirmation of a 6-digit code derived from both certificates and random nonces (see below). Afterwards, only paired devices are accepted.
+4. **Messages**: newline-delimited JSON, each with a `type` and a `body`.
 
-## Identidade
+## Identity
 
-- Chave ECDSA P-256 e certificado X.509 autoassinado, gerados na primeira execução (no PC: `$XDG_CONFIG_HOME/kizuna/identity.pem`, modo 0600).
-- **Impressão digital**: SHA-256 do certificado (DER), em hexadecimal minúsculo (64 caracteres).
-- **ID do dispositivo**: os primeiros 32 caracteres da impressão digital.
+- ECDSA P-256 key and self-signed X.509 certificate, generated on first run (on the PC: `$XDG_CONFIG_HOME/kizuna/identity.pem`, mode 0600).
+- **Fingerprint**: SHA-256 of the certificate (DER), in lowercase hexadecimal (64 characters).
+- **Device ID**: the first 32 characters of the fingerprint.
 
-## Descoberta (mDNS / DNS-SD)
+## Discovery (mDNS / DNS-SD)
 
-- Tipo de serviço: `_kizuna._tcp.local.`
-- Nome da instância: o ID do dispositivo (ex.: `33a544b6…0ce5e._kizuna._tcp.local.`)
-- Registo TXT:
-  - `name`: nome legível do dispositivo
-  - `v`: versão do protocolo (atualmente `0`); anúncios com outra versão são ignorados
-- Porta anunciada: a do servidor TLS (no PC, por omissão `47820/tcp`)
-- Por agora só são anunciados e usados endereços IPv4.
+- Service type: `_kizuna._tcp.local.`
+- Instance name: the device ID (e.g. `33a544b6…0ce5e._kizuna._tcp.local.`)
+- TXT record:
+  - `name`: human-readable device name
+  - `v`: protocol version (currently `0`); announcements with any other version are ignored
+- Announced port: the TLS server's port (on the PC, `47820/tcp` by default)
+- For now, only IPv4 addresses are announced and used.
 
-## Transporte (TLS)
+## Transport (TLS)
 
-- Só TLS 1.3; versões anteriores são recusadas no handshake.
-- Autenticação mútua: o cliente **tem** de apresentar o seu certificado autoassinado.
-- Não há autoridade de certificação: os certificados não são validados por cadeia. A confiança vem do emparelhamento, que compara impressões digitais; o TLS garante que o outro lado possui a chave privada do certificado apresentado.
-- O cliente deve fixar (*pin*) a impressão digital do servidor depois do emparelhamento.
-- Handshake com limite de 10 s.
+- TLS 1.3 only; earlier versions are rejected during the handshake.
+- Mutual authentication: the client **must** present its self-signed certificate.
+- There is no certificate authority: certificates are not chain-validated. Trust comes from pairing, which compares fingerprints; TLS guarantees that the other side holds the private key of the certificate it presented.
+- The client should pin the server's fingerprint after pairing.
+- The handshake has a 10 s limit.
 
-## Mensagens
+## Messages
 
-- Uma mensagem por linha: JSON em UTF-8 terminado em `\n`, no máximo 1 MiB.
-- Formato: `{"type": "<tipo>", "body": {...}}`; mensagens sem conteúdo não têm `body` (ex.: `{"type":"pair.accept"}`).
-- Os nomes de dispositivos recebidos são limpos antes de serem mostrados: sem caracteres de controlo nem de controlo bidirecional, no máximo 64 caracteres.
+- One message per line: UTF-8 JSON terminated by `\n`, at most 1 MiB.
+- Format: `{"type": "<type>", "body": {...}}`; messages without content have no `body` (e.g. `{"type":"pair.accept"}`).
+- Received device names are cleaned before being shown: no control or bidirectional control characters, at most 64 characters.
 
-## Emparelhamento
+## Pairing
 
-Papéis: o **iniciador** (I) é quem abriu a ligação TLS (normalmente o telemóvel); o **respondedor** (R) é o servidor (normalmente o PC). `fp_I` e `fp_R` são as impressões digitais **em bytes** (32 bytes) dos certificados vistos no handshake TLS. Nonces, compromissos e impressões digitais viajam em hexadecimal minúsculo.
+Roles: the **initiator** (I) is the side that opened the TLS connection (usually the phone); the **responder** (R) is the server (usually the PC). `fp_I` and `fp_R` are the fingerprints **as bytes** (32 bytes) of the certificates seen in the TLS handshake. Nonces, commitments and fingerprints are sent as lowercase hexadecimal.
 
 ```
 I → R  pair.request {device_name}
 R → I  pair.commit  {device_name, commitment}   commitment = SHA256("kizuna/v0/pair-commit" ‖ Nb ‖ fp_R ‖ fp_I)
-I → R  pair.nonce   {nonce: Na}                  Na: 32 bytes aleatórios
-R → I  pair.nonce   {nonce: Nb}                  Nb: 32 bytes aleatórios
-I      verifica o compromisso; se falhar, envia pair.reject e aborta
-ambos  código = u32_big_endian(SHA256("kizuna/v0/pair-code" ‖ fp_I ‖ fp_R ‖ Na ‖ Nb)[0..4]) mod 1 000 000
-ambos  pair.accept ou pair.reject, conforme a decisão do utilizador
+I → R  pair.nonce   {nonce: Na}                  Na: 32 random bytes
+R → I  pair.nonce   {nonce: Nb}                  Nb: 32 random bytes
+I      checks the commitment; if it fails, sends pair.reject and aborts
+both   code = u32_big_endian(SHA256("kizuna/v0/pair-code" ‖ fp_I ‖ fp_R ‖ Na ‖ Nb)[0..4]) mod 1 000 000
+both   pair.accept or pair.reject, according to the user's decision
 ```
 
-- As etiquetas (`"kizuna/v0/pair-commit"`, `"kizuna/v0/pair-code"`) são os bytes ASCII, sem terminador.
-- O código mostra-se com 6 dígitos, em dois grupos: `012 345`.
-- **Porquê o compromisso**: R fixa Nb antes de ver Na, e I envia Na antes de ver Nb, por isso nenhum dos lados, nem um atacante no meio, consegue escolher o código. Um ataque só passa despercebido com probabilidade 1 em 1 000 000 por tentativa.
-- **Confirmação**: o iniciador **mostra** o código e pede para aceitar; o respondedor pede ao utilizador que **escreva** o código que vê no iniciador. Assim o utilizador tem mesmo de comparar, e uma resposta atrasada a um pedido expirado nunca serve para outro.
-- Cada lado envia a sua decisão assim que o utilizador decide e espera pela do outro. O emparelhamento só fica concluído se os dois aceitarem; nesse caso cada lado guarda a impressão digital e o nome do outro, e a ligação continua como sessão normal.
-- Qualquer lado pode enviar `pair.reject` em qualquer passo (ex.: o PC recusa um segundo pedido enquanto há um em curso).
-- Limites: 10 s para cada passo automático; 90 s para os utilizadores decidirem.
-- Um dispositivo não emparelhado tem 10 s para enviar `pair.request`; qualquer outra mensagem fecha a ligação.
-- Para emparelhar de novo um dispositivo já conhecido, é preciso esquecê-lo primeiro (no PC: `kizuna-desktop unpair <id>`).
+- The tags (`"kizuna/v0/pair-commit"`, `"kizuna/v0/pair-code"`) are their ASCII bytes, with no terminator.
+- The code is shown as 6 digits in two groups: `012 345`.
+- **Why the commitment**: R fixes Nb before seeing Na, and I sends Na before seeing Nb, so neither side, nor an attacker in the middle, can choose the code. An attack goes unnoticed with a probability of only 1 in 1,000,000 per attempt.
+- **Confirmation**: the initiator **shows** the code and asks the user to accept; the responder asks the user to **type** the code shown on the initiator. This forces the user to actually compare, and a late answer to an expired request can never count for another one.
+- Each side sends its decision as soon as its user decides, and waits for the other side's. Pairing only completes if both accept; in that case each side stores the other's fingerprint and name, and the connection continues as a normal session.
+- Either side may send `pair.reject` at any step (e.g. the PC rejects a second request while one is in progress).
+- Limits: 10 s for each automatic step; 90 s for the users to decide.
+- An unpaired device has 10 s to send `pair.request`; any other message closes the connection.
+- To pair an already known device again, it must be forgotten first (on the PC: `kizuna-desktop unpair <id>`).
 
-## Tipos de mensagem (MVP)
+## Message types (MVP)
 
-| type | direção | descrição |
-|------|---------|-----------|
-| `pair.request` | I → R | pedido de emparelhamento (`device_name`) |
-| `pair.commit` | R → I | nome do respondedor e compromisso com o seu nonce |
-| `pair.nonce` | ambos | nonce aleatório (32 bytes) |
-| `pair.accept` / `pair.reject` | ambos | decisão do utilizador |
-| `notification.posted` | Android → PC | nova notificação (app, título, texto) |
-| `notification.dismissed` | ambos | notificação fechada |
-| `clipboard.update` | ambos | novo conteúdo da área de transferência |
-| `file.offer` | ambos | proposta de envio (nome, tamanho, hash) |
-| `file.accept` / `file.reject` | ambos | resposta |
-| `file.chunk` | ambos | bloco de dados |
+| type | direction | description |
+|------|-----------|-------------|
+| `pair.request` | I → R | pairing request (`device_name`) |
+| `pair.commit` | R → I | responder's name and commitment to its nonce |
+| `pair.nonce` | both | random nonce (32 bytes) |
+| `pair.accept` / `pair.reject` | both | the user's decision |
+| `notification.posted` | Android → PC | new notification (app, title, text) |
+| `notification.dismissed` | both | notification dismissed |
+| `clipboard.update` | both | new clipboard contents |
+| `file.offer` | both | offer to send a file (name, size, hash) |
+| `file.accept` / `file.reject` | both | reply |
+| `file.chunk` | both | block of data |
 
-## Regras de segurança
+## Security rules
 
-- Rejeitar qualquer ligação de um dispositivo não emparelhado
-- Pedir confirmação ao utilizador antes de aceitar ficheiros
-- Nenhuma função sensível pode ser ativada sem consentimento explícito e aviso visível
+- Reject any connection from an unpaired device
+- Ask the user for confirmation before accepting files
+- No sensitive feature may be enabled without explicit consent and a visible notice

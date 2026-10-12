@@ -10,12 +10,12 @@ use crate::storage;
 
 const TRUST_FILE: &str = "trusted.json";
 
-/// Um dispositivo emparelhado.
+/// A paired device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrustedDevice {
     pub fingerprint: Fingerprint,
     pub name: String,
-    /// Segundos desde 1970-01-01 UTC.
+    /// Seconds since 1970-01-01 UTC.
     pub paired_at: u64,
 }
 
@@ -38,9 +38,9 @@ struct TrustFile {
     devices: Vec<TrustedDevice>,
 }
 
-/// Lista de dispositivos emparelhados, em `trusted.json`. É relida do disco
-/// em cada consulta, para ver alterações feitas por outros processos (ex.:
-/// `kizuna-desktop unpair` com o daemon a correr).
+/// List of paired devices, in `trusted.json`. It is re-read from disk on
+/// every lookup, to see changes made by other processes (e.g.
+/// `kizuna-desktop unpair` while the daemon is running).
 pub struct TrustStore {
     path: PathBuf,
     write_lock: Mutex<()>,
@@ -65,7 +65,7 @@ impl TrustStore {
             .find(|d| d.fingerprint == *fingerprint))
     }
 
-    /// Acrescenta (ou atualiza) um dispositivo.
+    /// Adds (or updates) a device.
     pub fn add(&self, device: TrustedDevice) -> Result<()> {
         let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut file = self.read()?;
@@ -74,7 +74,7 @@ impl TrustStore {
         self.write(&file)
     }
 
-    /// Esquece os dispositivos cujo ID começa por `id_prefix`. Devolve os removidos.
+    /// Forgets the devices whose ID starts with `id_prefix`. Returns the removed ones.
     pub fn remove(&self, id_prefix: &str) -> Result<Vec<TrustedDevice>> {
         let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut file = self.read()?;
@@ -91,9 +91,9 @@ impl TrustStore {
     fn read(&self) -> Result<TrustFile> {
         match std::fs::read(&self.path) {
             Ok(bytes) => serde_json::from_slice(&bytes)
-                .with_context(|| format!("{} está corrompido", self.path.display())),
+                .with_context(|| format!("{} is corrupted", self.path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(TrustFile::default()),
-            Err(e) => Err(e).with_context(|| format!("falha a ler {}", self.path.display())),
+            Err(e) => Err(e).with_context(|| format!("failed to read {}", self.path.display())),
         }
     }
 
@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn sem_ficheiro_nao_ha_dispositivos() {
+    fn no_file_means_no_devices() {
         let dir = tempfile::tempdir().unwrap();
         let store = TrustStore::open(dir.path());
         assert!(store.list().unwrap().is_empty());
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn dispositivo_adicionado_persiste() {
+    fn added_device_persists() {
         let dir = tempfile::tempdir().unwrap();
         let device = TrustedDevice::new(fp(1), "Pixel".into());
         TrustStore::open(dir.path()).add(device.clone()).unwrap();
@@ -132,20 +132,18 @@ mod tests {
     }
 
     #[test]
-    fn reemparelhar_substitui_a_entrada() {
+    fn pairing_again_replaces_the_entry() {
         let dir = tempfile::tempdir().unwrap();
         let store = TrustStore::open(dir.path());
-        store
-            .add(TrustedDevice::new(fp(1), "Antigo".into()))
-            .unwrap();
-        store.add(TrustedDevice::new(fp(1), "Novo".into())).unwrap();
+        store.add(TrustedDevice::new(fp(1), "Old".into())).unwrap();
+        store.add(TrustedDevice::new(fp(1), "New".into())).unwrap();
         let devices = store.list().unwrap();
         assert_eq!(devices.len(), 1);
-        assert_eq!(devices[0].name, "Novo");
+        assert_eq!(devices[0].name, "New");
     }
 
     #[test]
-    fn remover_por_prefixo_do_id() {
+    fn remove_by_id_prefix() {
         let dir = tempfile::tempdir().unwrap();
         let store = TrustStore::open(dir.path());
         store.add(TrustedDevice::new(fp(0x11), "A".into())).unwrap();
@@ -161,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn ficheiro_corrompido_da_erro() {
+    fn corrupted_file_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(TRUST_FILE), "{").unwrap();
         assert!(TrustStore::open(dir.path()).get(&fp(1)).is_err());

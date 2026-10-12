@@ -10,21 +10,21 @@ use sha2::{Digest, Sha256};
 
 use crate::storage;
 
-/// Ficheiro com a chave privada e o certificado, em PEM.
+/// File holding the private key and the certificate, in PEM.
 const IDENTITY_FILE: &str = "identity.pem";
 
-/// Número de caracteres hexadecimais da impressão digital usados como ID do
-/// dispositivo (128 bits). Cabe numa etiqueta DNS (máx. 63 bytes).
+/// Number of hexadecimal characters of the fingerprint used as the device ID
+/// (128 bits). Fits in a DNS label (max. 63 bytes).
 const DEVICE_ID_LEN: usize = 32;
 
-/// Certificado autoassinado e chave privada que identificam este dispositivo.
+/// Self-signed certificate and private key that identify this device.
 pub struct Identity {
     pub cert: CertificateDer<'static>,
     pub key: PrivateKeyDer<'static>,
 }
 
 impl Identity {
-    /// Carrega a identidade guardada em `dir`, ou gera uma nova na primeira execução.
+    /// Loads the identity stored in `dir`, or generates a new one on first run.
     pub fn load_or_create(dir: &Path, device_name: &str) -> Result<Self> {
         let path = dir.join(IDENTITY_FILE);
         if path.exists() {
@@ -38,10 +38,10 @@ impl Identity {
     fn load(path: &Path) -> Result<Self> {
         let cert = CertificateDer::pem_file_iter(path)
             .and_then(|mut certs| certs.next().transpose())
-            .with_context(|| format!("falha a ler o certificado de {}", path.display()))?
-            .ok_or_else(|| anyhow!("{} não contém um certificado", path.display()))?;
+            .with_context(|| format!("failed to read the certificate from {}", path.display()))?
+            .ok_or_else(|| anyhow!("{} does not contain a certificate", path.display()))?;
         let key = PrivateKeyDer::from_pem_file(path)
-            .with_context(|| format!("falha a ler a chave privada de {}", path.display()))?;
+            .with_context(|| format!("failed to read the private key from {}", path.display()))?;
         Ok(Self { cert, key })
     }
 
@@ -49,14 +49,14 @@ impl Identity {
         Fingerprint::of(&self.cert)
     }
 
-    /// ID estável do dispositivo, derivado do certificado.
+    /// Stable device ID, derived from the certificate.
     pub fn device_id(&self) -> String {
         self.fingerprint().device_id()
     }
 }
 
-/// Impressão digital SHA-256 de um certificado (DER). Mostrada e guardada em
-/// hexadecimal minúsculo.
+/// SHA-256 fingerprint of a certificate (DER). Shown and stored as lowercase
+/// hexadecimal.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fingerprint([u8; 32]);
 
@@ -91,11 +91,10 @@ impl FromStr for Fingerprint {
 
     fn from_str(s: &str) -> Result<Self> {
         if s.len() != 64 || s.bytes().any(|b| b.is_ascii_uppercase()) {
-            return Err(anyhow!("impressão digital inválida: {s:?}"));
+            return Err(anyhow!("invalid fingerprint: {s:?}"));
         }
         let mut bytes = [0; 32];
-        hex::decode_to_slice(s, &mut bytes)
-            .map_err(|_| anyhow!("impressão digital inválida: {s:?}"))?;
+        hex::decode_to_slice(s, &mut bytes).map_err(|_| anyhow!("invalid fingerprint: {s:?}"))?;
         Ok(Self(bytes))
     }
 }
@@ -113,9 +112,9 @@ impl<'de> serde::Deserialize<'de> for Fingerprint {
     }
 }
 
-/// Gera uma chave ECDSA P-256 e um certificado autoassinado, em PEM.
+/// Generates an ECDSA P-256 key and a self-signed certificate, in PEM.
 fn generate_pem(device_name: &str) -> Result<String> {
-    let key_pair = KeyPair::generate().context("falha a gerar o par de chaves")?;
+    let key_pair = KeyPair::generate().context("failed to generate the key pair")?;
     let mut params = CertificateParams::new(Vec::<String>::new())?;
     params.distinguished_name = DistinguishedName::new();
     params
@@ -123,7 +122,7 @@ fn generate_pem(device_name: &str) -> Result<String> {
         .push(DnType::CommonName, device_name);
     let cert = params
         .self_signed(&key_pair)
-        .context("falha a gerar o certificado")?;
+        .context("failed to generate the certificate")?;
     Ok(format!("{}{}", key_pair.serialize_pem(), cert.pem()))
 }
 
@@ -133,19 +132,19 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn gera_na_primeira_execucao_e_reutiliza_depois() {
+    fn generated_on_first_run_and_reused_afterwards() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("kizuna");
 
-        let first = Identity::load_or_create(&config, "pc-teste").unwrap();
-        let second = Identity::load_or_create(&config, "outro-nome").unwrap();
+        let first = Identity::load_or_create(&config, "test-pc").unwrap();
+        let second = Identity::load_or_create(&config, "other-name").unwrap();
 
         assert_eq!(first.fingerprint(), second.fingerprint());
         assert_eq!(first.key.secret_der(), second.key.secret_der());
     }
 
     #[test]
-    fn identidades_diferentes_por_instalacao() {
+    fn different_identity_per_installation() {
         let a = tempfile::tempdir().unwrap();
         let b = tempfile::tempdir().unwrap();
         let ia = Identity::load_or_create(a.path(), "pc").unwrap();
@@ -154,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn formato_da_impressao_digital_e_do_id() {
+    fn fingerprint_and_id_format() {
         let dir = tempfile::tempdir().unwrap();
         let identity = Identity::load_or_create(dir.path(), "pc").unwrap();
 
@@ -166,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn impressao_digital_invalida_e_recusada() {
+    fn invalid_fingerprint_is_rejected() {
         let ok = "ab".repeat(32);
         assert!(ok.parse::<Fingerprint>().is_ok());
         assert!(ok.to_uppercase().parse::<Fingerprint>().is_err());
@@ -175,9 +174,9 @@ mod tests {
     }
 
     #[test]
-    fn ficheiro_corrompido_da_erro_em_vez_de_nova_identidade() {
+    fn corrupted_file_is_an_error_instead_of_a_new_identity() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join(IDENTITY_FILE), "lixo").unwrap();
+        fs::write(dir.path().join(IDENTITY_FILE), "garbage").unwrap();
         assert!(Identity::load_or_create(dir.path(), "pc").is_err());
     }
 }

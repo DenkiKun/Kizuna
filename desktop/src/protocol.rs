@@ -2,11 +2,11 @@ use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// Tamanho máximo de uma mensagem (uma linha), para um outro lado malicioso
-/// não esgotar a memória.
+/// Maximum size of a message (one line), so a malicious peer cannot exhaust
+/// memory.
 pub const MAX_MESSAGE_LEN: usize = 1024 * 1024;
 
-/// Mensagens do protocolo (ver docs/PROTOCOL.md). Uma por linha, em JSON.
+/// Protocol messages (see docs/PROTOCOL.md). One per line, in JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "body")]
 pub enum Message {
@@ -40,7 +40,7 @@ pub enum Message {
 }
 
 impl Message {
-    /// Nome do tipo, tal como aparece no campo `type`.
+    /// Type name, as it appears in the `type` field.
     pub fn kind(&self) -> &'static str {
         match self {
             Message::PairRequest { .. } => "pair.request",
@@ -55,12 +55,12 @@ impl Message {
     }
 }
 
-/// Comprimento máximo de um nome de dispositivo, em caracteres.
+/// Maximum length of a device name, in characters.
 const MAX_NAME_CHARS: usize = 64;
 
-/// Limpa um nome de dispositivo vindo da rede antes de o mostrar: retira
-/// caracteres de controlo (ex.: sequências de escape do terminal) e de
-/// controlo bidirecional, e limita o comprimento.
+/// Cleans a device name received from the network before showing it: removes
+/// control characters (e.g. terminal escape sequences) and bidirectional
+/// control characters, and limits the length.
 pub fn clean_device_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -69,14 +69,14 @@ pub fn clean_device_name(name: &str) -> String {
         .collect();
     let cleaned = cleaned.trim();
     if cleaned.is_empty() {
-        "Dispositivo sem nome".to_string()
+        "Unnamed device".to_string()
     } else {
         cleaned.to_string()
     }
 }
 
-/// Escapa texto vindo da rede antes de o incluir em mensagens de erro ou de
-/// registo, para não chegar ao terminal nenhuma sequência de escape.
+/// Escapes text received from the network before including it in error or log
+/// messages, so no escape sequence reaches the terminal.
 pub fn escape_untrusted(text: &str) -> String {
     text.chars()
         .map(|c| {
@@ -89,13 +89,13 @@ pub fn escape_untrusted(text: &str) -> String {
         .collect()
 }
 
-/// Caracteres de controlo e de controlo bidirecional.
+/// Control and bidirectional control characters.
 fn is_unsafe_char(c: char) -> bool {
     c.is_control()
         || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
-/// Lê a próxima mensagem; `None` se a ligação foi fechada.
+/// Reads the next message; `None` if the connection was closed.
 pub async fn read_message<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Message>> {
     let mut line = Vec::new();
     let limit = MAX_MESSAGE_LEN as u64 + 1;
@@ -104,8 +104,8 @@ pub async fn read_message<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Opt
         .read_until(b'\n', &mut line)
         .await
     {
-        // Fechar a ligação sem close_notify entre mensagens é só uma
-        // desconexão (ex.: o telemóvel perdeu o Wi-Fi).
+        // Closing the connection without close_notify between messages is
+        // just a disconnection (e.g. the phone lost Wi-Fi).
         Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof && line.is_empty() => 0,
         result => result?,
     };
@@ -114,13 +114,13 @@ pub async fn read_message<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Opt
     }
     if line.last() != Some(&b'\n') {
         if line.len() > MAX_MESSAGE_LEN {
-            bail!("mensagem demasiado grande");
+            bail!("message too large");
         }
-        bail!("ligação fechada a meio de uma mensagem");
+        bail!("connection closed in the middle of a message");
     }
-    // Os erros do serde citam o texto recebido (ex.: "unknown variant ...").
+    // serde's errors quote the received text (e.g. "unknown variant ...").
     let message = serde_json::from_slice(&line)
-        .map_err(|e| anyhow!("mensagem inválida: {}", escape_untrusted(&e.to_string())))?;
+        .map_err(|e| anyhow!("invalid message: {}", escape_untrusted(&e.to_string())))?;
     Ok(Some(message))
 }
 
@@ -138,7 +138,7 @@ mod tests {
     use tokio::io::BufReader;
 
     #[test]
-    fn formato_json_das_mensagens() {
+    fn json_message_format() {
         let request = Message::PairRequest {
             device_name: "Pixel".into(),
         };
@@ -155,16 +155,16 @@ mod tests {
     }
 
     #[test]
-    fn nomes_vindos_da_rede_sao_limpos() {
+    fn names_from_the_network_are_cleaned() {
         assert_eq!(clean_device_name("  Pixel 8  "), "Pixel 8");
         assert_eq!(clean_device_name("\u{1b}[2J\u{1b}[31mPC\n"), "[2J[31mPC");
         assert_eq!(clean_device_name("abc\u{202E}fdp.exe"), "abcfdp.exe");
-        assert_eq!(clean_device_name("\u{7}\t"), "Dispositivo sem nome");
+        assert_eq!(clean_device_name("\u{7}\t"), "Unnamed device");
         assert_eq!(clean_device_name(&"é".repeat(100)).chars().count(), 64);
     }
 
     #[tokio::test]
-    async fn erro_de_mensagem_invalida_nao_leva_escapes_para_o_terminal() {
+    async fn invalid_message_error_does_not_carry_escapes_to_the_terminal() {
         let line = b"{\"type\":\"\\u001b[2J\\u001b]0;x\\u0007\\u202e\"}\n";
         let err = read_message(&mut BufReader::new(&line[..]))
             .await
@@ -175,12 +175,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn varias_mensagens_numa_ligacao() {
+    async fn several_messages_on_one_connection() {
         let mut buf = Vec::new();
         let messages = [
             Message::PairNonce { nonce: "ab".into() },
             Message::ClipboardUpdate {
-                text: "linha 1\nlinha 2".into(),
+                text: "line 1\nline 2".into(),
             },
         ];
         for m in &messages {
@@ -194,19 +194,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mensagem_demasiado_grande_e_recusada() {
+    async fn oversized_message_is_rejected() {
         let huge = vec![b'x'; MAX_MESSAGE_LEN + 10];
         let err = read_message(&mut BufReader::new(&huge[..]))
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("demasiado grande"), "{err}");
+        assert!(err.to_string().contains("too large"), "{err}");
     }
 
     #[tokio::test]
-    async fn mensagem_cortada_ou_invalida_da_erro() {
+    async fn truncated_or_invalid_message_is_an_error() {
         let cut = br#"{"type":"pair.accept"}"#;
         assert!(read_message(&mut BufReader::new(&cut[..])).await.is_err());
-        let bad = b"{\"type\":\"nao.existe\"}\n";
+        let bad = b"{\"type\":\"does.not.exist\"}\n";
         assert!(read_message(&mut BufReader::new(&bad[..])).await.is_err());
     }
 }

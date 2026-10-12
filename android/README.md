@@ -1,15 +1,15 @@
 # Android (Kotlin)
 
-Projeto Android a criar com o Android Studio (módulo `app`, Kotlin, minSdk 29).
+Android project, to be created with Android Studio (`app` module, Kotlin, minSdk 29).
 
-## Componentes do MVP
+## MVP components
 
-- `NotificationListenerService`: captura notificações e envia `notification.posted`
-- Serviço em primeiro plano: mantém a ligação ao PC, sempre com notificação visível
-- Cliente de rede: mDNS (`NsdManager`) + TLS
-- Leitor de QR para o emparelhamento
+- `NotificationListenerService`: captures notifications and sends `notification.posted`
+- Foreground service: keeps the connection to the PC, always with a visible notification
+- Network client: mDNS (`NsdManager`) + TLS
+- QR scanner for pairing
 
-## Notas
+## Notes
 
-- Todas as permissões sensíveis (acesso a notificações, localização) são pedidas de forma explícita.
-- Sem funções ocultas: o utilizador vê sempre quando algo está ativo.
+- All sensitive permissions (notification access, location) are requested explicitly.
+- No hidden features: the user always sees when something is active.

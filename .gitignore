@@ -1,0 +1,15 @@
+target/
+*.iml
+.gradle/
+build/
+local.properties
+.idea/
+
+# Android: chaves de assinatura e artefactos de build
+*.jks
+*.keystore
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/

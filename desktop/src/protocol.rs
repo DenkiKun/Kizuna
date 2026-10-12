@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -64,10 +64,7 @@ const MAX_NAME_CHARS: usize = 64;
 pub fn clean_device_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .filter(|&c| {
-            !c.is_control()
-                && !matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
-        })
+        .filter(|&c| !is_unsafe_char(c))
         .take(MAX_NAME_CHARS)
         .collect();
     let cleaned = cleaned.trim();
@@ -76,6 +73,26 @@ pub fn clean_device_name(name: &str) -> String {
     } else {
         cleaned.to_string()
     }
+}
+
+/// Escapa texto vindo da rede antes de o incluir em mensagens de erro ou de
+/// registo, para não chegar ao terminal nenhuma sequência de escape.
+pub fn escape_untrusted(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if is_unsafe_char(c) {
+                c.escape_unicode().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+/// Caracteres de controlo e de controlo bidirecional.
+fn is_unsafe_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
 /// Lê a próxima mensagem; `None` se a ligação foi fechada.
@@ -101,7 +118,9 @@ pub async fn read_message<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Opt
         }
         bail!("ligação fechada a meio de uma mensagem");
     }
-    let message = serde_json::from_slice(&line).context("mensagem inválida")?;
+    // Os erros do serde citam o texto recebido (ex.: "unknown variant ...").
+    let message = serde_json::from_slice(&line)
+        .map_err(|e| anyhow!("mensagem inválida: {}", escape_untrusted(&e.to_string())))?;
     Ok(Some(message))
 }
 
@@ -142,6 +161,17 @@ mod tests {
         assert_eq!(clean_device_name("abc\u{202E}fdp.exe"), "abcfdp.exe");
         assert_eq!(clean_device_name("\u{7}\t"), "Dispositivo sem nome");
         assert_eq!(clean_device_name(&"é".repeat(100)).chars().count(), 64);
+    }
+
+    #[tokio::test]
+    async fn erro_de_mensagem_invalida_nao_leva_escapes_para_o_terminal() {
+        let line = b"{\"type\":\"\\u001b[2J\\u001b]0;x\\u0007\\u202e\"}\n";
+        let err = read_message(&mut BufReader::new(&line[..]))
+            .await
+            .unwrap_err();
+        let text = format!("{err:#}");
+        assert!(!text.chars().any(is_unsafe_char), "{text:?}");
+        assert!(text.contains("\\u{1b}[2J"), "{text}");
     }
 
     #[tokio::test]

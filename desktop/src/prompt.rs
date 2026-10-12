@@ -1,15 +1,15 @@
-//! Confirmação de emparelhamentos no terminal.
+//! Pairing confirmation in the terminal.
 //!
-//! Há dois modos:
-//! - [`Mode::Enter`]: o utilizador escreve o código que vê no outro
-//!   dispositivo. É o modo do daemon: uma resposta atrasada a um pedido
-//!   expirado nunca serve para outro pedido (o código é diferente), e obriga a
-//!   olhar mesmo para o outro ecrã.
-//! - [`Mode::Compare`]: o código é mostrado e o utilizador responde s/N. É o
-//!   modo de quem inicia o emparelhamento (o outro lado escreve o código).
+//! There are two modes:
+//! - [`Mode::Enter`]: the user types the code they see on the other device.
+//!   This is the daemon's mode: a late answer to an expired request never
+//!   counts for another request (the code is different), and it forces the
+//!   user to actually look at the other screen.
+//! - [`Mode::Compare`]: the code is shown and the user answers y/N. This is
+//!   the mode of the side that starts pairing (the other side types the code).
 //!
-//! Os pedidos são mostrados um de cada vez; uma resposta só conta para o
-//! pedido que está no ecrã, e é descartada se esse pedido já expirou.
+//! Requests are shown one at a time; an answer only counts for the request
+//! currently on screen, and is discarded if that request has already expired.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -19,7 +19,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::pairing::Prompt;
 
-/// De quanto em quanto tempo se verifica se o pedido no ecrã expirou.
+/// How often to check whether the request on screen has expired.
 const CHECK_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +40,7 @@ pub struct Prompter {
 }
 
 impl Prompter {
-    /// Prompter que lê respostas de `input` e escreve perguntas em `output`.
+    /// Prompter that reads answers from `input` and writes questions to `output`.
     pub fn spawn<I, O>(input: I, output: O) -> Self
     where
         I: AsyncBufRead + Unpin + Send + 'static,
@@ -51,7 +51,7 @@ impl Prompter {
         Self { requests }
     }
 
-    /// Prompter no terminal (stdin/stdout).
+    /// Prompter on the terminal (stdin/stdout).
     pub fn terminal() -> Self {
         Self::spawn(
             tokio::io::BufReader::new(tokio::io::stdin()),
@@ -59,8 +59,8 @@ impl Prompter {
         )
     }
 
-    /// Pergunta ao utilizador; `false` se recusar ou não houver quem responda.
-    /// Abandonar o futuro cancela a pergunta.
+    /// Asks the user; `false` if they refuse or nobody can answer.
+    /// Dropping the future cancels the question.
     pub async fn confirm(&self, prompt: Prompt, mode: Mode) -> bool {
         let (reply, answer) = oneshot::channel();
         let request = Request {
@@ -89,7 +89,7 @@ where
         while queue.front().is_some_and(|r| r.reply.is_closed()) {
             queue.pop_front();
             if shown {
-                say(&mut output, "\nO pedido expirou ou foi cancelado.\n").await;
+                say(&mut output, "\nThe request expired or was cancelled.\n").await;
                 shown = false;
             }
         }
@@ -111,7 +111,7 @@ where
                     let Some(request) = queue.pop_front() else { continue };
                     shown = false;
                     if request.reply.is_closed() {
-                        say(&mut output, "O pedido já tinha expirado; resposta ignorada.\n").await;
+                        say(&mut output, "The request had already expired; answer ignored.\n").await;
                         continue;
                     }
                     let accepted = match request.mode {
@@ -120,9 +120,9 @@ where
                     };
                     let _ = request.reply.send(accepted);
                     let text = match (accepted, request.mode) {
-                        (true, _) => "Confirmado.\n",
-                        (false, Mode::Enter) if !line.trim().is_empty() => "Código errado; emparelhamento recusado.\n",
-                        (false, _) => "Recusado.\n",
+                        (true, _) => "Confirmed.\n",
+                        (false, Mode::Enter) if !line.trim().is_empty() => "Wrong code; pairing rejected.\n",
+                        (false, _) => "Rejected.\n",
                     };
                     say(&mut output, text).await;
                 }
@@ -141,13 +141,13 @@ where
 fn question(request: &Request) -> String {
     let prompt = &request.prompt;
     let header = format!(
-        "\nPedido de emparelhamento de «{}»\n  Impressão digital: {}\n",
+        "\nPairing request from \"{}\"\n  Fingerprint: {}\n",
         prompt.peer_name, prompt.peer_fingerprint
     );
     match request.mode {
-        Mode::Enter => header + "Escreve o código mostrado no outro dispositivo (Enter recusa): ",
+        Mode::Enter => header + "Type the code shown on the other device (Enter rejects): ",
         Mode::Compare => format!(
-            "{header}  Código: {}\nEscreve este código no outro dispositivo. Aceitar? [s/N] ",
+            "{header}  Code: {}\nType this code on the other device. Accept? [y/N] ",
             prompt.code
         ),
     }
@@ -156,7 +156,7 @@ fn question(request: &Request) -> String {
 fn is_yes(answer: &str) -> bool {
     matches!(
         answer.trim().to_lowercase().as_str(),
-        "s" | "sim" | "y" | "yes"
+        "y" | "yes" | "s" | "sim"
     )
 }
 
@@ -204,7 +204,7 @@ mod tests {
         while !seen.contains(needle) {
             let n = tokio::time::timeout(Duration::from_secs(5), output.read(&mut buf))
                 .await
-                .expect("o texto não apareceu")
+                .expect("the text did not appear")
                 .unwrap();
             seen.push_str(std::str::from_utf8(&buf[..n]).unwrap());
         }
@@ -212,72 +212,72 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn codigo_certo_confirma_e_nao_e_mostrado() {
+    async fn right_code_confirms_and_is_not_shown() {
         let (prompter, mut input, mut output) = setup();
         let answer = ask(&prompter, prompt("Pixel", 123456), Mode::Enter);
-        let text = read_until(&mut output, "Enter recusa").await;
-        assert!(text.contains("«Pixel»"), "{text}");
-        assert!(!text.contains("123"), "o código não pode aparecer: {text}");
+        let text = read_until(&mut output, "Enter rejects").await;
+        assert!(text.contains("\"Pixel\""), "{text}");
+        assert!(!text.contains("123"), "the code must not appear: {text}");
         type_line(&mut input, "123 456").await;
         assert!(answer.await.unwrap());
     }
 
     #[tokio::test]
-    async fn codigo_errado_ou_vazio_recusa() {
-        for reply in ["123457", "", "s"] {
+    async fn wrong_or_empty_code_rejects() {
+        for reply in ["123457", "", "y"] {
             let (prompter, mut input, mut output) = setup();
             let answer = ask(&prompter, prompt("Pixel", 123456), Mode::Enter);
-            read_until(&mut output, "Enter recusa").await;
+            read_until(&mut output, "Enter rejects").await;
             type_line(&mut input, reply).await;
-            assert!(!answer.await.unwrap(), "{reply:?} aceitou");
+            assert!(!answer.await.unwrap(), "{reply:?} was accepted");
         }
     }
 
     #[tokio::test]
-    async fn modo_comparar_mostra_o_codigo_e_aceita_sim() {
+    async fn compare_mode_shows_the_code_and_accepts_yes() {
         let (prompter, mut input, mut output) = setup();
         let answer = ask(&prompter, prompt("PC", 42), Mode::Compare);
-        let text = read_until(&mut output, "[s/N]").await;
+        let text = read_until(&mut output, "[y/N]").await;
         assert!(text.contains("000 042"), "{text}");
-        type_line(&mut input, "Sim").await;
+        type_line(&mut input, "Yes").await;
         assert!(answer.await.unwrap());
 
         let answer = ask(&prompter, prompt("PC", 42), Mode::Compare);
-        read_until(&mut output, "[s/N]").await;
+        read_until(&mut output, "[y/N]").await;
         type_line(&mut input, "").await;
         assert!(!answer.await.unwrap());
     }
 
     #[tokio::test]
-    async fn sem_terminal_recusa() {
+    async fn no_terminal_rejects() {
         let (prompter, input, _output) = setup();
         drop(input);
         assert!(!prompter.confirm(prompt("Pixel", 1), Mode::Enter).await);
     }
 
     #[tokio::test]
-    async fn resposta_atrasada_nunca_aprova_o_pedido_seguinte() {
+    async fn late_answer_never_approves_the_next_request() {
         let (prompter, mut input, mut output) = setup();
 
-        // O pedido A expira sem resposta.
+        // Request A expires without an answer.
         let a = tokio::time::timeout(
             Duration::from_millis(50),
             prompter.confirm(prompt("A", 111111), Mode::Enter),
         )
         .await;
         assert!(a.is_err());
-        read_until(&mut output, "«A»").await;
+        read_until(&mut output, "\"A\"").await;
 
-        // Chega o pedido B e, logo a seguir, o código que o utilizador escreveu para A.
+        // Request B arrives, followed right away by the code the user typed for A.
         let b = ask(&prompter, prompt("B", 222222), Mode::Enter);
         type_line(&mut input, "111111").await;
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        // Conforme a ordem de chegada, a linha é descartada ou recusa B; nunca o aprova.
+        // Depending on arrival order, the line is discarded or rejects B; it never approves it.
         if !b.is_finished() {
-            read_until(&mut output, "«B»").await;
+            read_until(&mut output, "\"B\"").await;
             type_line(&mut input, "").await;
         }
-        assert!(!b.await.unwrap(), "o código de A aprovou B");
+        assert!(!b.await.unwrap(), "A's code approved B");
     }
 }

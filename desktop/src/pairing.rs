@@ -1,9 +1,9 @@
-//! Emparelhamento por comparação de um código de 6 dígitos (ver docs/PROTOCOL.md).
+//! Pairing by comparing a 6-digit code (see docs/PROTOCOL.md).
 //!
-//! O código é derivado dos dois certificados e de dois nonces aleatórios. O
-//! respondedor compromete-se com o seu nonce antes de ver o do iniciador, por
-//! isso nenhum dos lados (nem um atacante no meio) consegue escolher o código:
-//! um ataque só passa despercebido com probabilidade 1 em 1 000 000.
+//! The code is derived from both certificates and two random nonces. The
+//! responder commits to its nonce before seeing the initiator's, so neither
+//! side (nor an attacker in the middle) can choose the code: an attack only
+//! goes unnoticed with a probability of 1 in 1,000,000.
 
 use std::fmt;
 use std::future::Future;
@@ -16,9 +16,9 @@ use tokio::io::{AsyncBufRead, AsyncWrite};
 use crate::identity::Fingerprint;
 use crate::protocol::{clean_device_name, read_message, write_message, Message};
 
-/// Tempo máximo para cada passo automático do protocolo.
+/// Maximum time for each automatic step of the protocol.
 const STEP_TIMEOUT: Duration = Duration::from_secs(10);
-/// Tempo para os utilizadores compararem o código e decidirem.
+/// Time for the users to compare the code and decide.
 const DECISION_TIMEOUT: Duration = Duration::from_secs(90);
 
 const COMMIT_TAG: &[u8] = b"kizuna/v0/pair-commit";
@@ -26,19 +26,19 @@ const CODE_TAG: &[u8] = b"kizuna/v0/pair-code";
 
 type Nonce = [u8; 32];
 
-/// As impressões digitais dos dois lados da ligação TLS.
+/// The fingerprints of both sides of the TLS connection.
 #[derive(Debug, Clone, Copy)]
 pub struct Keys {
     pub own: Fingerprint,
     pub peer: Fingerprint,
 }
 
-/// Código de confirmação (0 a 999 999), mostrado como `123 456`.
+/// Confirmation code (0 to 999,999), shown as `123 456`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Code(u32);
 
 impl Code {
-    /// `true` se `input` é este código (os espaços são ignorados).
+    /// `true` if `input` is this code (whitespace is ignored).
     pub fn matches(&self, input: &str) -> bool {
         let digits: String = input.chars().filter(|c| !c.is_whitespace()).collect();
         digits.len() == 6
@@ -58,7 +58,7 @@ impl fmt::Display for Code {
     }
 }
 
-/// O que o utilizador tem de confirmar.
+/// What the user has to confirm.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prompt {
     pub peer_name: String,
@@ -73,10 +73,10 @@ pub enum Outcome {
     RejectedByPeer,
 }
 
-/// Emparelha como iniciador (o lado que abriu a ligação).
+/// Pairs as the initiator (the side that opened the connection).
 ///
-/// `confirm` mostra o código ao utilizador e devolve a sua decisão; se o outro
-/// lado recusar entretanto, o futuro é abandonado.
+/// `confirm` shows the code to the user and returns their decision; if the
+/// other side rejects in the meantime, the future is dropped.
 pub async fn initiate<R, W, F, Fut>(
     reader: &mut R,
     writer: &mut W,
@@ -101,10 +101,10 @@ where
             commitment,
         } => (
             clean_device_name(&device_name),
-            decode::<32>(&commitment, "compromisso")?,
+            decode::<32>(&commitment, "commitment")?,
         ),
         Message::PairReject => return Ok(Outcome::RejectedByPeer),
-        other => bail!("esperava pair.commit, recebi {}", other.kind()),
+        other => bail!("expected pair.commit, got {}", other.kind()),
     };
 
     let own_nonce = random_nonce()?;
@@ -112,20 +112,20 @@ where
     let peer_nonce = match recv(reader, STEP_TIMEOUT).await? {
         Message::PairNonce { nonce } => decode::<32>(&nonce, "nonce")?,
         Message::PairReject => return Ok(Outcome::RejectedByPeer),
-        other => bail!("esperava pair.nonce, recebi {}", other.kind()),
+        other => bail!("expected pair.nonce, got {}", other.kind()),
     };
 
     if commit(&peer_nonce, &keys.peer, &keys.own) != commitment {
         let _ = write_message(writer, &Message::PairReject).await;
-        bail!("o nonce não corresponde ao compromisso (possível ataque)");
+        bail!("the nonce does not match the commitment (possible attack)");
     }
 
     let code = derive_code(&keys.own, &keys.peer, &own_nonce, &peer_nonce);
     decide(reader, writer, keys, peer_name, code, confirm).await
 }
 
-/// Emparelha como respondedor, depois de receber `pair.request` de `peer_name`
-/// (tal como veio na mensagem; é limpo aqui).
+/// Pairs as the responder, after receiving `pair.request` from `peer_name`
+/// (as it came in the message; it is cleaned here).
 pub async fn respond<R, W, F, Fut>(
     reader: &mut R,
     writer: &mut W,
@@ -152,7 +152,7 @@ where
     let peer_nonce = match recv(reader, STEP_TIMEOUT).await? {
         Message::PairNonce { nonce } => decode::<32>(&nonce, "nonce")?,
         Message::PairReject => return Ok(Outcome::RejectedByPeer),
-        other => bail!("esperava pair.nonce, recebi {}", other.kind()),
+        other => bail!("expected pair.nonce, got {}", other.kind()),
     };
     write_message(writer, &nonce_message(&own_nonce)).await?;
 
@@ -160,7 +160,7 @@ where
     decide(reader, writer, keys, peer_name, code, confirm).await
 }
 
-/// Pede a decisão ao utilizador local e espera pela do outro lado.
+/// Asks the local user for a decision and waits for the other side's.
 async fn decide<R, W, F, Fut>(
     reader: &mut R,
     writer: &mut W,
@@ -180,8 +180,8 @@ where
         peer_fingerprint: keys.peer,
         code,
     };
-    // A leitura não pode ser cancelada a meio (perderia bytes), por isso fica
-    // fixa e é retomada depois da decisão local.
+    // The read cannot be cancelled midway (it would lose bytes), so it stays
+    // pinned and is resumed after the local decision.
     let peer_decision = recv(reader, DECISION_TIMEOUT);
     tokio::pin!(peer_decision);
     let local_decision = tokio::time::timeout(DECISION_TIMEOUT, confirm(prompt));
@@ -193,7 +193,7 @@ where
             match decision? {
                 Message::PairAccept => peer_accepted = true,
                 Message::PairReject => return Ok(Outcome::RejectedByPeer),
-                other => bail!("esperava pair.accept ou pair.reject, recebi {}", other.kind()),
+                other => bail!("expected pair.accept or pair.reject, got {}", other.kind()),
             }
             local_decision.await.unwrap_or(false)
         }
@@ -210,10 +210,7 @@ where
         match peer_decision.await? {
             Message::PairAccept => {}
             Message::PairReject => return Ok(Outcome::RejectedByPeer),
-            other => bail!(
-                "esperava pair.accept ou pair.reject, recebi {}",
-                other.kind()
-            ),
+            other => bail!("expected pair.accept or pair.reject, got {}", other.kind()),
         }
     }
     Ok(Outcome::Paired { peer_name })
@@ -222,8 +219,8 @@ where
 async fn recv<R: AsyncBufRead + Unpin>(reader: &mut R, timeout: Duration) -> Result<Message> {
     tokio::time::timeout(timeout, read_message(reader))
         .await
-        .map_err(|_| anyhow!("o outro dispositivo deixou de responder"))??
-        .ok_or_else(|| anyhow!("ligação fechada durante o emparelhamento"))
+        .map_err(|_| anyhow!("the other device stopped responding"))??
+        .ok_or_else(|| anyhow!("connection closed during pairing"))
 }
 
 fn nonce_message(nonce: &Nonce) -> Message {
@@ -237,20 +234,20 @@ fn random_nonce() -> Result<Nonce> {
     rustls::crypto::ring::default_provider()
         .secure_random
         .fill(&mut nonce)
-        .map_err(|_| anyhow!("falha a gerar um nonce aleatório"))?;
+        .map_err(|_| anyhow!("failed to generate a random nonce"))?;
     Ok(nonce)
 }
 
 fn decode<const N: usize>(value: &str, what: &str) -> Result<[u8; N]> {
     let mut bytes = [0; N];
     if value.len() != 2 * N || value.bytes().any(|b| b.is_ascii_uppercase()) {
-        bail!("{what} inválido");
+        bail!("invalid {what}");
     }
-    hex::decode_to_slice(value, &mut bytes).map_err(|_| anyhow!("{what} inválido"))?;
+    hex::decode_to_slice(value, &mut bytes).map_err(|_| anyhow!("invalid {what}"))?;
     Ok(bytes)
 }
 
-/// Compromisso do respondedor: SHA-256(tag ‖ Nb ‖ fp_respondedor ‖ fp_iniciador).
+/// Responder's commitment: SHA-256(tag ‖ Nb ‖ fp_responder ‖ fp_initiator).
 fn commit(nonce: &Nonce, responder: &Fingerprint, initiator: &Fingerprint) -> [u8; 32] {
     Sha256::new()
         .chain_update(COMMIT_TAG)
@@ -261,8 +258,8 @@ fn commit(nonce: &Nonce, responder: &Fingerprint, initiator: &Fingerprint) -> [u
         .into()
 }
 
-/// Código: SHA-256(tag ‖ fp_iniciador ‖ fp_respondedor ‖ Na ‖ Nb), primeiros
-/// 4 bytes como inteiro big-endian, módulo 1 000 000.
+/// Code: SHA-256(tag ‖ fp_initiator ‖ fp_responder ‖ Na ‖ Nb), first 4 bytes
+/// as a big-endian integer, modulo 1,000,000.
 fn derive_code(
     initiator: &Fingerprint,
     responder: &Fingerprint,
@@ -296,7 +293,7 @@ mod tests {
     const PHONE: u8 = 0xaa;
     const PC: u8 = 0xbb;
 
-    /// Uma ligação em memória entre os dois lados.
+    /// An in-memory connection between the two sides.
     fn link() -> ((Reader, Writer), (Reader, Writer)) {
         let (a, b) = tokio::io::duplex(64 * 1024);
         let (ar, aw) = tokio::io::split(a);
@@ -304,8 +301,8 @@ mod tests {
         ((BufReader::new(ar), aw), (BufReader::new(br), bw))
     }
 
-    /// Corre os dois lados com as decisões dadas; devolve (iniciador, respondedor)
-    /// e os prompts mostrados a cada um.
+    /// Runs both sides with the given decisions; returns (initiator, responder)
+    /// and the prompts shown to each.
     async fn run(phone_accepts: bool, pc_accepts: bool) -> (Outcome, Outcome, Vec<Prompt>) {
         let ((mut pr, mut pw), (mut cr, mut cw)) = link();
         let prompts = Arc::new(Mutex::new(Vec::new()));
@@ -318,7 +315,7 @@ mod tests {
                 own: fp(PHONE),
                 peer: fp(PC),
             },
-            "Telemóvel",
+            "Phone",
             |prompt| async move {
                 p1.lock().unwrap().push(prompt);
                 phone_accepts
@@ -351,7 +348,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn os_dois_aceitam_e_veem_o_mesmo_codigo() {
+    async fn both_accept_and_see_the_same_code() {
         let (phone, pc, prompts) = run(true, true).await;
         assert_eq!(
             phone,
@@ -362,43 +359,43 @@ mod tests {
         assert_eq!(
             pc,
             Outcome::Paired {
-                peer_name: "Telemóvel".into()
+                peer_name: "Phone".into()
             }
         );
 
         assert_eq!(prompts.len(), 2);
         assert_eq!(prompts[0].code, prompts[1].code);
         let names: Vec<_> = prompts.iter().map(|p| p.peer_name.as_str()).collect();
-        assert!(names.contains(&"PC") && names.contains(&"Telemóvel"));
+        assert!(names.contains(&"PC") && names.contains(&"Phone"));
         let fps: Vec<_> = prompts.iter().map(|p| p.peer_fingerprint).collect();
         assert!(fps.contains(&fp(PC)) && fps.contains(&fp(PHONE)));
     }
 
     #[tokio::test]
-    async fn codigo_muda_em_cada_emparelhamento() {
+    async fn code_changes_on_every_pairing() {
         let (_, _, first) = run(true, true).await;
         let (_, _, second) = run(true, true).await;
         assert_ne!(first[0].code, second[0].code);
     }
 
     #[tokio::test]
-    async fn pc_recusa() {
+    async fn pc_rejects() {
         let (phone, pc, _) = run(true, false).await;
         assert_eq!(phone, Outcome::RejectedByPeer);
         assert_eq!(pc, Outcome::RejectedLocally);
     }
 
     #[tokio::test]
-    async fn telemovel_recusa() {
+    async fn phone_rejects() {
         let (phone, pc, _) = run(false, true).await;
         assert_eq!(phone, Outcome::RejectedLocally);
         assert_eq!(pc, Outcome::RejectedByPeer);
     }
 
     #[tokio::test]
-    async fn recusa_do_outro_lado_cancela_a_pergunta_local() {
+    async fn rejection_by_the_other_side_cancels_the_local_prompt() {
         let ((mut pr, mut pw), (mut cr, mut cw)) = link();
-        // O utilizador do PC nunca responde; o telemóvel recusa logo.
+        // The PC user never answers; the phone rejects right away.
         let phone = initiate(
             &mut pr,
             &mut pw,
@@ -406,7 +403,7 @@ mod tests {
                 own: fp(PHONE),
                 peer: fp(PC),
             },
-            "Telemóvel",
+            "Phone",
             |_| async { false },
         );
         let pc = async {
@@ -419,7 +416,7 @@ mod tests {
                     peer: fp(PHONE),
                 },
                 "PC",
-                "Telemóvel".into(),
+                "Phone".into(),
                 |_| std::future::pending::<bool>(),
             )
             .await
@@ -427,14 +424,14 @@ mod tests {
         let result =
             tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(phone, pc) })
                 .await
-                .expect("o PC ficou à espera do utilizador");
+                .expect("the PC kept waiting for the user");
         assert_eq!(result.0.unwrap(), Outcome::RejectedLocally);
         assert_eq!(result.1.unwrap(), Outcome::RejectedByPeer);
     }
 
-    /// Um respondedor que revela um nonce diferente do comprometido é apanhado.
+    /// A responder that reveals a nonce other than the committed one is caught.
     #[tokio::test]
-    async fn nonce_diferente_do_compromisso_e_detetado() {
+    async fn nonce_different_from_the_commitment_is_detected() {
         let ((mut pr, mut pw), (mut cr, mut cw)) = link();
         let phone = initiate(
             &mut pr,
@@ -443,8 +440,8 @@ mod tests {
                 own: fp(PHONE),
                 peer: fp(PC),
             },
-            "Telemóvel",
-            |_| async { panic!("não devia pedir confirmação") },
+            "Phone",
+            |_| async { panic!("should not ask for confirmation") },
         );
         let attacker = async {
             recv(&mut cr, STEP_TIMEOUT).await.unwrap();
@@ -463,12 +460,12 @@ mod tests {
         };
         let (phone, last) = tokio::join!(phone, attacker);
         let err = phone.unwrap_err();
-        assert!(err.to_string().contains("compromisso"), "{err}");
+        assert!(err.to_string().contains("commitment"), "{err}");
         assert_eq!(last, Message::PairReject);
     }
 
     #[tokio::test]
-    async fn mensagem_fora_de_ordem_e_erro() {
+    async fn out_of_order_message_is_an_error() {
         let ((_ir, mut iw), (mut rr, mut rw)) = link();
         write_message(&mut iw, &Message::PairAccept).await.unwrap();
         let err = respond(
@@ -488,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn codigo_depende_de_todas_as_entradas() {
+    fn code_depends_on_all_inputs() {
         let (a, b, na, nb) = (fp(1), fp(2), [3; 32], [4; 32]);
         let base = derive_code(&a, &b, &na, &nb);
         assert_ne!(base, derive_code(&b, &a, &na, &nb));
@@ -499,13 +496,13 @@ mod tests {
     }
 
     #[test]
-    fn codigo_tem_sempre_seis_digitos() {
+    fn code_always_has_six_digits() {
         assert_eq!(Code(42).to_string(), "000 042");
         assert_eq!(Code(999_999).to_string(), "999 999");
     }
 
     #[test]
-    fn codigo_introduzido_pelo_utilizador() {
+    fn code_typed_by_the_user() {
         let code = Code(42);
         assert!(code.matches("000042"));
         assert!(code.matches(" 000 042 "));
@@ -516,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn nonce_invalido_e_recusado() {
+    fn invalid_nonce_is_rejected() {
         assert!(decode::<32>(&"ab".repeat(32), "nonce").is_ok());
         assert!(decode::<32>(&"AB".repeat(32), "nonce").is_err());
         assert!(decode::<32>("abcd", "nonce").is_err());

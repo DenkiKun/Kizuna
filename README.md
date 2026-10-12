@@ -1,46 +1,46 @@
 # Kizuna
 
-> Ligação Android ↔ Linux, pensada para sistemas imutáveis (Bazzite, Silverblue, SteamOS).
+> An Android ↔ Linux link, built for immutable systems (Bazzite, Silverblue, SteamOS).
 
-Kizuna liga o teu telemóvel Android ao teu PC Linux pela rede local, com ligação cifrada e sem servidores de terceiros.
+Kizuna connects your Android phone to your Linux PC over the local network, with an encrypted connection and no third-party servers.
 
-## Porquê outro "KDE Connect"?
+## Why another "KDE Connect"?
 
-- Instalação simples em sistemas imutáveis (Flatpak, sem layering de pacotes)
-- Sem dependências do KDE/GNOME
-- Protocolo documentado e minimalista, fácil de auditar
-- Escrito em Rust (PC) e Kotlin (Android)
+- Easy to install on immutable systems (Flatpak, no package layering)
+- No KDE/GNOME dependencies
+- A documented, minimal protocol that is easy to audit
+- Written in Rust (PC) and Kotlin (Android)
 
-## Funcionalidades do MVP (v0.1)
+## MVP features (v0.1)
 
-- [ ] Emparelhamento seguro (código/QR + troca de chaves)
-- [ ] Sincronização de notificações (Android → PC)
-- [ ] Sincronização da área de transferência (bidirecional)
-- [ ] Envio e receção de ficheiros
+- [ ] Secure pairing (code/QR + key exchange)
+- [ ] Notification sync (Android → PC)
+- [ ] Clipboard sync (both ways)
+- [ ] Sending and receiving files
 
 ## Roadmap
 
-Ver [ROADMAP.md](ROADMAP.md). Protocolo em [docs/PROTOCOL.md](docs/PROTOCOL.md).
+See [ROADMAP.md](ROADMAP.md). The protocol is described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-## Privacidade e segurança
+## Privacy and security
 
-- Todo o tráfego é cifrado e autenticado entre dispositivos emparelhados
-- Nada sai da rede local; sem telemetria
-- Funções sensíveis (ex.: localização remota) exigem **consentimento explícito** e mostram **sempre um aviso visível** no telemóvel
+- All traffic between paired devices is encrypted and authenticated
+- Nothing leaves the local network; no telemetry
+- Sensitive features (e.g. remote location) require **explicit consent** and **always show a visible notice** on the phone
 
-## Estrutura
+## Layout
 
 ```
 kizuna/
-├── desktop/   # daemon e CLI em Rust
-├── android/   # app Kotlin
-└── docs/      # protocolo e arquitetura
+├── desktop/   # Rust daemon and CLI
+├── android/   # Kotlin app
+└── docs/      # protocol and architecture
 ```
 
-## Contribuir
+## Contributing
 
-Contribuições são bem-vindas. Abre uma issue antes de grandes alterações.
+Contributions are welcome. Please open an issue before making large changes.
 
-## Licença
+## License
 
-GPL-3.0-or-later (a confirmar antes da primeira release).
+GPL-3.0-or-later (to be confirmed before the first release).

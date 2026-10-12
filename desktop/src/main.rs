@@ -24,34 +24,34 @@ use prompt::{Mode, Prompter};
 use protocol::{escape_untrusted, read_message, write_message, Message};
 use trust::{TrustStore, TrustedDevice};
 
-/// Porta TCP do servidor TLS. Fixa, para poder ser aberta na firewall.
+/// TCP port of the TLS server. Fixed, so it can be opened in the firewall.
 const DEFAULT_PORT: u16 = 47820;
 
-/// Tempo que um dispositivo não emparelhado tem para pedir emparelhamento.
+/// Time an unpaired device has to request pairing.
 const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 
 const USAGE: &str = "\
-Uso:
-  kizuna-desktop                 corre o daemon (anúncio mDNS + servidor TLS)
-  kizuna-desktop pair <endereço> emparelha com outro dispositivo (ip[:porta])
-  kizuna-desktop devices         lista os dispositivos emparelhados
-  kizuna-desktop unpair <id>     esquece um dispositivo (início do ID chega)";
+Usage:
+  kizuna-desktop                 run the daemon (mDNS announcement + TLS server)
+  kizuna-desktop pair <address>  pair with another device (ip[:port])
+  kizuna-desktop devices         list paired devices
+  kizuna-desktop unpair <id>     forget a device (the start of the ID is enough)";
 
-/// Estado partilhado pelas ligações do daemon.
+/// State shared by the daemon's connections.
 struct Daemon {
     fingerprint: Fingerprint,
     device_name: String,
     trust: TrustStore,
     prompter: Prompter,
-    /// Só um emparelhamento de cada vez (evita filas de pedidos falsos).
+    /// Only one pairing at a time (avoids queues of bogus requests).
     pairing_slot: Semaphore,
 }
 
 fn main() -> Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     let result = runtime.block_on(run());
-    // A leitura do stdin (prompter) corre numa thread bloqueante que nunca
-    // termina sozinha; sem isto, o processo ficaria preso à saída.
+    // Reading stdin (prompter) runs on a blocking thread that never finishes
+    // on its own; without this, the process would hang on exit.
     runtime.shutdown_timeout(Duration::from_millis(100));
     result
 }
@@ -82,8 +82,8 @@ async fn run_daemon(dir: &Path) -> Result<()> {
 
     let device_name = device_name();
     let identity = Identity::load_or_create(dir, &device_name)?;
-    println!("Dispositivo: {device_name} ({})", identity.device_id());
-    println!("Impressão digital: {}", identity.fingerprint());
+    println!("Device: {device_name} ({})", identity.device_id());
+    println!("Fingerprint: {}", identity.fingerprint());
 
     let server = tls::Server::bind(
         SocketAddr::from((Ipv4Addr::UNSPECIFIED, DEFAULT_PORT)),
@@ -91,7 +91,7 @@ async fn run_daemon(dir: &Path) -> Result<()> {
     )
     .await?;
     let port = server.local_addr()?.port();
-    println!("Servidor TLS 1.3 à escuta na porta {port}");
+    println!("TLS 1.3 server listening on port {port}");
 
     let discovery = Discovery::start(LocalDevice {
         id: identity.device_id(),
@@ -104,11 +104,11 @@ async fn run_daemon(dir: &Path) -> Result<()> {
             match event {
                 DiscoveryEvent::Found(d) => {
                     println!(
-                        "Encontrado: {} ({}) em {:?}:{}",
+                        "Found: {} ({}) at {:?}:{}",
                         d.name, d.id, d.addresses, d.port
                     )
                 }
-                DiscoveryEvent::Lost { id } => println!("Saiu da rede: {id}"),
+                DiscoveryEvent::Lost { id } => println!("Left the network: {id}"),
             }
         }
     });
@@ -134,19 +134,19 @@ async fn run_daemon(dir: &Path) -> Result<()> {
                             Err(e) => Err(e),
                         };
                         if let Err(e) = result {
-                            // Segunda defesa: o erro pode citar dados do outro lado.
-                            eprintln!("Ligação de {peer}: {}", escape_untrusted(&format!("{e:#}")));
+                            // Second line of defence: the error may quote data from the other side.
+                            eprintln!("Connection from {peer}: {}", escape_untrusted(&format!("{e:#}")));
                         }
                     });
                 }
-                Err(e) => eprintln!("Erro a aceitar ligação: {e:#}"),
+                Err(e) => eprintln!("Error accepting connection: {e:#}"),
             },
             _ = tokio::signal::ctrl_c() => break,
             _ = terminate.recv() => break,
         }
     }
 
-    println!("A terminar...");
+    println!("Shutting down...");
     discovery.shutdown().await;
     Ok(())
 }
@@ -157,26 +157,23 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, daemon: &Dae
     let mut reader = BufReader::new(reader);
 
     if let Some(device) = daemon.trust.get(&fingerprint)? {
-        println!("«{}» ligou-se ({peer})", device.name);
+        println!("\"{}\" connected ({peer})", device.name);
         return session(&mut reader, &device.name).await;
     }
 
-    // Um dispositivo desconhecido só pode pedir emparelhamento.
+    // An unknown device may only request pairing.
     let first = tokio::time::timeout(FIRST_MESSAGE_TIMEOUT, read_message(&mut reader))
         .await
-        .map_err(|_| anyhow!("dispositivo não emparelhado não pediu emparelhamento"))??;
+        .map_err(|_| anyhow!("unpaired device did not request pairing"))??;
     let peer_name = match first {
         Some(Message::PairRequest { device_name }) => device_name,
-        Some(other) => bail!(
-            "dispositivo não emparelhado enviou {}; ligação fechada",
-            other.kind()
-        ),
+        Some(other) => bail!("unpaired device sent {}; connection closed", other.kind()),
         None => return Ok(()),
     };
 
     let Ok(_slot) = daemon.pairing_slot.try_acquire() else {
         write_message(&mut writer, &Message::PairReject).await?;
-        bail!("pedido de emparelhamento recusado: já há outro em curso");
+        bail!("pairing request rejected: another one is in progress");
     };
     let keys = Keys {
         own: daemon.fingerprint,
@@ -198,31 +195,31 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, daemon: &Dae
             daemon
                 .trust
                 .add(TrustedDevice::new(fingerprint, peer_name.clone()))?;
-            println!("Emparelhado com «{peer_name}».");
+            println!("Paired with \"{peer_name}\".");
             session(&mut reader, &peer_name).await
         }
         Outcome::RejectedLocally => {
-            println!("Emparelhamento recusado.");
+            println!("Pairing rejected.");
             Ok(())
         }
         Outcome::RejectedByPeer => {
-            println!("O outro dispositivo recusou o emparelhamento.");
+            println!("The other device rejected the pairing.");
             Ok(())
         }
     }
 }
 
-/// Ligação com um dispositivo emparelhado. Por agora só regista as mensagens;
-/// as funcionalidades (notificações, clipboard, ficheiros) vêm a seguir.
+/// Connection with a paired device. For now it only logs the messages; the
+/// features (notifications, clipboard, files) come next.
 async fn session<R: AsyncBufRead + Unpin>(reader: &mut R, name: &str) -> Result<()> {
     while let Some(message) = read_message(reader).await? {
-        println!("«{name}»: {}", message.kind());
+        println!("\"{name}\": {}", message.kind());
     }
-    println!("«{name}» desligou-se.");
+    println!("\"{name}\" disconnected.");
     Ok(())
 }
 
-/// Emparelha com o dispositivo em `address`, como iniciador.
+/// Pairs with the device at `address`, as the initiator.
 async fn pair_with(dir: &Path, address: &str) -> Result<()> {
     let device_name = device_name();
     let identity = Identity::load_or_create(dir, &device_name)?;
@@ -231,11 +228,11 @@ async fn pair_with(dir: &Path, address: &str) -> Result<()> {
 
     let conn = tls::connect(addr, &identity).await?;
     if let Some(device) = trust.get(&conn.peer_fingerprint)? {
-        println!("Já estás emparelhado com «{}».", device.name);
+        println!("Already paired with \"{}\".", device.name);
         return Ok(());
     }
 
-    println!("A emparelhar com {addr}...");
+    println!("Pairing with {addr}...");
     let fingerprint = conn.peer_fingerprint;
     let (reader, mut writer) = tokio::io::split(conn.stream);
     let mut reader = BufReader::new(reader);
@@ -256,10 +253,10 @@ async fn pair_with(dir: &Path, address: &str) -> Result<()> {
     match outcome {
         Outcome::Paired { peer_name } => {
             trust.add(TrustedDevice::new(fingerprint, peer_name.clone()))?;
-            println!("Emparelhado com «{peer_name}».");
+            println!("Paired with \"{peer_name}\".");
         }
-        Outcome::RejectedLocally => println!("Emparelhamento cancelado."),
-        Outcome::RejectedByPeer => println!("O outro dispositivo recusou o emparelhamento."),
+        Outcome::RejectedLocally => println!("Pairing cancelled."),
+        Outcome::RejectedByPeer => println!("The other device rejected the pairing."),
     }
     let _ = writer.shutdown().await;
     Ok(())
@@ -273,16 +270,16 @@ async fn resolve(address: &str) -> Result<SocketAddr> {
     };
     let mut addrs = tokio::net::lookup_host(&with_port)
         .await
-        .with_context(|| format!("endereço inválido: {address}"))?;
+        .with_context(|| format!("invalid address: {address}"))?;
     addrs
         .next()
-        .ok_or_else(|| anyhow!("endereço sem resultados: {address}"))
+        .ok_or_else(|| anyhow!("address has no results: {address}"))
 }
 
 fn list_devices(dir: &Path) -> Result<()> {
     let devices = TrustStore::open(dir).list()?;
     if devices.is_empty() {
-        println!("Nenhum dispositivo emparelhado.");
+        println!("No paired devices.");
     }
     for device in devices {
         println!("{}  {}", device.fingerprint.device_id(), device.name);
@@ -298,17 +295,17 @@ fn unpair(dir: &Path, id: &str) -> Result<()> {
         .filter(|d| d.fingerprint.to_string().starts_with(id))
         .collect();
     match matches.as_slice() {
-        [] => bail!("nenhum dispositivo emparelhado com o ID {id:?}"),
+        [] => bail!("no paired device with ID {id:?}"),
         [device] => {
             store.remove(&device.fingerprint.to_string())?;
-            println!("«{}» foi esquecido.", device.name);
+            println!("\"{}\" has been forgotten.", device.name);
             Ok(())
         }
-        _ => bail!("o ID {id:?} é ambíguo; escreve mais caracteres"),
+        _ => bail!("the ID {id:?} is ambiguous; type more characters"),
     }
 }
 
-/// Nome do dispositivo mostrado aos outros: o hostname do sistema.
+/// Device name shown to others: the system hostname.
 fn device_name() -> String {
     std::fs::read_to_string("/proc/sys/kernel/hostname")
         .ok()

@@ -1,23 +1,23 @@
 # Roadmap
 
 ## v0.1: MVP
-1. Descoberta de dispositivos na rede local (mDNS)
-2. Emparelhamento com troca de chaves e confirmação por código/QR
-3. Canal cifrado entre PC e telemóvel
-4. Notificações Android → PC (NotificationListenerService → notificação do desktop)
-5. Clipboard bidirecional
-6. Transferência de ficheiros (com progresso e retoma)
-7. Pacotes: Flatpak (Flathub), AppImage, RPM (COPR) e APK na página de releases
+1. Device discovery on the local network (mDNS)
+2. Pairing with key exchange and confirmation by code/QR
+3. Encrypted channel between PC and phone
+4. Android → PC notifications (NotificationListenerService → desktop notification)
+5. Two-way clipboard
+6. File transfer (with progress and resume)
+7. Packages: Flatpak (Flathub), AppImage, RPM (COPR) and APK on the releases page
 
 ## v0.2
-- Localização remota, com consentimento e aviso visível no telemóvel
-- Resposta a notificações / mensagens a partir do PC
-- Controlo de multimédia
+- Remote location, with consent and a visible notice on the phone
+- Replying to notifications / messages from the PC
+- Media control
 
 ## v0.3
-- Espelhamento e controlo remoto (integração com scrcpy)
-- Contactos e SMS
+- Screen mirroring and remote control (scrcpy integration)
+- Contacts and SMS
 
-## Fora do âmbito (por agora)
-- Acesso remoto fora da rede local
-- Funcionalidades silenciosas ou ocultas no telemóvel
+## Out of scope (for now)
+- Remote access outside the local network
+- Silent or hidden features on the phone

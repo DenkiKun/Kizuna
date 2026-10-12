@@ -2,7 +2,7 @@
 name = "kizuna-desktop"
 version = "0.0.1"
 edition = "2021"
-description = "Daemon e CLI do Kizuna (ligação Android <-> Linux)"
+description = "Kizuna daemon and CLI (Android <-> Linux link)"
 license = "GPL-3.0-or-later"
 
 [dependencies]

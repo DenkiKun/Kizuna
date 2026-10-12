@@ -495,6 +495,18 @@ mod tests {
         assert_eq!(base, derive_code(&a, &b, &na, &nb));
     }
 
+    /// Shared test vector (docs/PROTOCOL.md); the Android app checks the same values.
+    #[test]
+    fn matches_the_protocol_test_vector() {
+        let (initiator, responder) = (fp(0x11), fp(0x22));
+        let (na, nb) = ([0x33; 32], [0x44; 32]);
+        assert_eq!(
+            hex::encode(commit(&nb, &responder, &initiator)),
+            "6923165278d40d25bce69f08e8857bf93f90dc4eedf9077d6ea6e695fbf708a0"
+        );
+        assert_eq!(derive_code(&initiator, &responder, &na, &nb), Code(158474));
+    }
+
     #[test]
     fn code_always_has_six_digits() {
         assert_eq!(Code(42).to_string(), "000 042");

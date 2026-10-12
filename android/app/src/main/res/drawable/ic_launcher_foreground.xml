@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from data/icons/io.github.DenkiKun.Kizuna.svg -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="0.68" android:scaleY="0.68" android:translateX="10.48" android:translateY="13.81">
+        <path android:fillColor="#ff8f73" android:pathData="M60.85 32.75L100 32.75A10.25 10.25 0 0 1 110.25 43L110.25 67A10.25 10.25 0 0 1 100 77.25L47 77.25A10.25 10.25 0 0 1 36.75 67L36.75 43A10.25 10.25 0 0 1 47 32.75L47.15 32.75L47.15 41.25L47 41.25A1.75 1.75 0 0 0 45.25 43L45.25 67A1.75 1.75 0 0 0 47 68.75L100 68.75A1.75 1.75 0 0 0 101.75 67L101.75 43A1.75 1.75 0 0 0 100 41.25L60.85 41.25ZM69 76.75H78A0 0 0 0 1 78 76.75V94.5A0 0 0 0 1 78 94.5H69A0 0 0 0 1 69 94.5V76.75A0 0 0 0 1 69 76.75ZM59.25 94H87.75A3.75 3.75 0 0 1 91.5 97.75V97.75A3.75 3.75 0 0 1 87.75 101.5H59.25A3.75 3.75 0 0 1 55.5 97.75V97.75A3.75 3.75 0 0 1 59.25 94Z" />
+        <path android:fillColor="#ffffff" android:pathData="M58.25 79.85L58.25 80A11.25 11.25 0 0 1 47 91.25L29 91.25A11.25 11.25 0 0 1 17.75 80L17.75 28A11.25 11.25 0 0 1 29 16.75L47 16.75A11.25 11.25 0 0 1 58.25 28L58.25 66.15L49.75 66.15L49.75 28A2.75 2.75 0 0 0 47 25.25L29 25.25A2.75 2.75 0 0 0 26.25 28L26.25 80A2.75 2.75 0 0 0 29 82.75L47 82.75A2.75 2.75 0 0 0 49.75 80L49.75 79.85Z" />
+    </group>
+</vector>

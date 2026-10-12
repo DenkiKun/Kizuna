@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kizuna</string>
+    <string name="pcs_on_network">PCs on this network</string>
+    <string name="searching">Looking for PCs running Kizuna…</string>
+    <string name="pc_entry">%1$s\n%2$s</string>
+    <string name="pc_entry_paired">%1$s (paired)\n%2$s</string>
+    <string name="connecting">Connecting to %1$s…</string>
+    <string name="error">Error: %1$s</string>
+    <string name="identity_not_ready">the device identity is not ready yet</string>
+    <string name="certificate_mismatch">the PC\'s certificate does not match its announcement</string>
+    <string name="connected_paired">Connected to %1$s (paired).</string>
+    <string name="paired_with">Paired with %1$s.</string>
+    <string name="pairing_cancelled">Pairing cancelled.</string>
+    <string name="pairing_rejected_by_pc">The PC rejected the pairing.</string>
+    <string name="pair_with">Pair with %1$s?</string>
+    <string name="type_code_on_pc">Type this code on the PC, then tap Accept.</string>
+    <string name="pc_fingerprint">PC fingerprint:\n%1$s</string>
+    <string name="connect_by_address">Or connect by address</string>
+    <string name="address_hint">PC address, e.g. 192.168.1.20</string>
+    <string name="connect">Connect</string>
+    <string name="invalid_address">Invalid address.</string>
+    <string name="accept">Accept</string>
+    <string name="reject">Reject</string>
+</resources>

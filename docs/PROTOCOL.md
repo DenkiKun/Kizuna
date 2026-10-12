@@ -22,6 +22,8 @@
   - `v`: protocol version (currently `0`); announcements with any other version are ignored
 - Announced port: the TLS server's port (on the PC, `47820/tcp` by default)
 - For now, only IPv4 addresses are announced and used.
+- Some networks block multicast between devices (some hotspots, guest networks and mesh routers), so mDNS never arrives. Clients must also allow connecting by address (`host[:port]`, port `47820` by default). Without an announcement there is no device ID to compare, but trust still comes from pairing and the fingerprint.
+- A client that found a PC over mDNS checks that the PC's certificate fingerprint starts with the announced device ID.
 
 ## Transport (TLS)
 
@@ -60,6 +62,19 @@ both   pair.accept or pair.reject, according to the user's decision
 - Limits: 10 s for each automatic step; 90 s for the users to decide.
 - An unpaired device has 10 s to send `pair.request`; any other message closes the connection.
 - To pair an already known device again, it must be forgotten first (on the PC: `kizuna-desktop unpair <id>`).
+
+### Test vector
+
+Implementations must reproduce these values (checked by the tests on the PC and on Android):
+
+| input | value |
+|-------|-------|
+| `fp_I` | 32 bytes `0x11` |
+| `fp_R` | 32 bytes `0x22` |
+| `Na` | 32 bytes `0x33` |
+| `Nb` | 32 bytes `0x44` |
+| commitment | `6923165278d40d25bce69f08e8857bf93f90dc4eedf9077d6ea6e695fbf708a0` |
+| code | `158474` (shown as `158 474`) |
 
 ## Message types (MVP)
 

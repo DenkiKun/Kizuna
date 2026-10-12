@@ -4,6 +4,8 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use mdns_sd::{IfKind, Receiver, ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
 
+use crate::protocol::clean_device_name;
+
 /// Tipo de serviço anunciado por todos os dispositivos Kizuna (ver docs/PROTOCOL.md).
 pub const SERVICE_TYPE: &str = "_kizuna._tcp.local.";
 
@@ -158,7 +160,7 @@ fn parse_resolved(info: &ResolvedService) -> Option<RemoteDevice> {
     }
     addresses.sort();
     let name = match info.get_property_val_str(TXT_NAME) {
-        Some(name) if !name.trim().is_empty() => name.to_string(),
+        Some(name) if !name.trim().is_empty() => clean_device_name(name),
         _ => id.clone(),
     };
     Some(RemoteDevice {

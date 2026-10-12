@@ -16,6 +16,7 @@ rustls = { version = "0.23.45", default-features = false, features = ["ring", "s
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "logging"] }
 rcgen = { version = "0.14.10", default-features = false, features = ["ring", "pem"] }
 rustls-pki-types = "1.15.1"
+hex = "0.4.3"
 
 [dev-dependencies]
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }

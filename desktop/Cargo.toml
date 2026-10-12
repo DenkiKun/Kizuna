@@ -17,6 +17,7 @@ tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring
 rcgen = { version = "0.14.10", default-features = false, features = ["ring", "pem"] }
 rustls-pki-types = "1.15.1"
 hex = "0.4.3"
+iced = { version = "0.14.0", features = ["tokio", "image", "advanced", "svg"] }
 
 [dev-dependencies]
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }

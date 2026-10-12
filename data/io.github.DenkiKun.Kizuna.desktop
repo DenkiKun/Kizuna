@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Kizuna
+Comment=Connect your Android phone to your Linux PC
+Exec=kizuna-desktop
+Icon=io.github.DenkiKun.Kizuna
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=phone;android;notifications;clipboard;files;
+StartupNotify=true
+StartupWMClass=io.github.DenkiKun.Kizuna

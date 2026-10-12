@@ -9,9 +9,17 @@ pub enum Message {
     #[serde(rename = "pair.accept")]
     PairAccept,
     #[serde(rename = "notification.posted")]
-    NotificationPosted { app: String, title: String, text: String },
+    NotificationPosted {
+        app: String,
+        title: String,
+        text: String,
+    },
     #[serde(rename = "clipboard.update")]
     ClipboardUpdate { text: String },
     #[serde(rename = "file.offer")]
-    FileOffer { name: String, size: u64, sha256: String },
+    FileOffer {
+        name: String,
+        size: u64,
+        sha256: String,
+    },
 }

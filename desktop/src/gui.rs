@@ -24,6 +24,7 @@ use crate::service::{self, Event};
 use crate::storage;
 use crate::trust::{TrustStore, TrustedDevice};
 
+const APP_ID: &str = "io.github.DenkiKun.Kizuna";
 const ACTIVITY_LINES: usize = 8;
 const ICON: &[u8] = include_bytes!("../../data/icons/io.github.DenkiKun.Kizuna.svg");
 
@@ -40,6 +41,11 @@ pub fn run(dir: PathBuf) -> anyhow::Result<()> {
             size: Size::new(980.0, 660.0),
             min_size: Some(Size::new(760.0, 540.0)),
             exit_on_close_request: false,
+            // Lets the desktop match the window to data/io.github.DenkiKun.Kizuna.desktop (and its icon).
+            platform_specific: window::settings::PlatformSpecific {
+                application_id: APP_ID.into(),
+                ..Default::default()
+            },
             ..window::Settings::default()
         })
         .run()

@@ -60,6 +60,34 @@ class ProtocolTest {
     }
 
     @Test
+    fun probeFormatMatchesThePc() {
+        val probe = JSONObject(BroadcastDiscovery.probe().toString(Charsets.UTF_8))
+        assertEquals("discovery.probe", probe.getString("type"))
+        assertEquals("0", probe.getJSONObject("body").getString("v"))
+    }
+
+    @Test
+    fun parsesAnnouncementsAndRejectsInvalidOnes() {
+        val id = "0123456789abcdef0123456789abcdef"
+        fun announce(body: String) = """{"type":"discovery.announce","body":$body}""".toByteArray()
+        assertEquals(
+            BroadcastDiscovery.Announcement(id, "PC", 47820),
+            BroadcastDiscovery.parseAnnouncement(announce("""{"v":"0","id":"$id","name":"PC","port":47820}""")),
+        )
+        assertEquals(id, BroadcastDiscovery.parseAnnouncement(announce("""{"v":"0","id":"$id","name":" ","port":1}"""))?.name)
+        for (bad in listOf(
+            """{"v":"9","id":"$id","name":"PC","port":47820}""",
+            """{"v":"0","id":"PC","name":"PC","port":47820}""",
+            """{"v":"0","id":"$id","name":"PC","port":0}""",
+            """{"v":"0","id":"$id","name":"PC"}""",
+        )) {
+            assertNull(bad, BroadcastDiscovery.parseAnnouncement(announce(bad)))
+        }
+        assertNull(BroadcastDiscovery.parseAnnouncement("nope".toByteArray()))
+        assertNull(BroadcastDiscovery.parseAnnouncement(ByteArray(2000) { ' '.code.toByte() }))
+    }
+
+    @Test
     fun namesFromTheNetworkAreCleaned() {
         assertEquals("Pixel 8", cleanDeviceName("  Pixel 8  "))
         assertEquals("[2J[31mPC", cleanDeviceName("\u001b[2J\u001b[31mPC\n"))

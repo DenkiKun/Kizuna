@@ -61,6 +61,45 @@ sealed class Message(val type: String) {
     }
 }
 
+/**
+ * Discovery over UDP broadcast, for networks that block mDNS (e.g. phone
+ * hotspots): the phone broadcasts a probe and PCs reply with an announcement.
+ */
+object BroadcastDiscovery {
+    const val PORT = 47820
+    const val PROTOCOL_VERSION = "0"
+    private const val MAX_DATAGRAM = 1024
+
+    data class Announcement(val id: String, val name: String, val port: Int)
+
+    fun probe(): ByteArray =
+        JSONObject()
+            .put("type", "discovery.probe")
+            .put("body", JSONObject().put("v", PROTOCOL_VERSION))
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+
+    /** Parses a PC's reply; `null` if it is not a valid, compatible announcement. */
+    fun parseAnnouncement(datagram: ByteArray): Announcement? {
+        if (datagram.size > MAX_DATAGRAM) return null
+        return try {
+            val json = JSONObject(datagram.toString(Charsets.UTF_8))
+            val body = json.getJSONObject("body")
+            val id = body.getString("id")
+            val port = body.getInt("port")
+            val valid = json.getString("type") == "discovery.announce" &&
+                body.getString("v") == PROTOCOL_VERSION &&
+                id.length == 32 && id.all { it in '0'..'9' || it in 'a'..'f' } &&
+                port in 1..65535
+            if (!valid) return null
+            val name = body.optString("name").takeIf { it.isNotBlank() }?.let(::cleanDeviceName) ?: id
+            Announcement(id, name, port)
+        } catch (e: JSONException) {
+            null
+        }
+    }
+}
+
 /** Newline-delimited JSON over a pair of streams. */
 class LineChannel(input: InputStream, private val output: OutputStream) {
     private val input = BufferedInputStream(input)

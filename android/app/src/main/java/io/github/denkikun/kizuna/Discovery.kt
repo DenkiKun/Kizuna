@@ -6,15 +6,22 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.util.Log
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
+import kotlin.concurrent.thread
 
 /** A Kizuna PC found on the local network. */
 data class FoundPc(val id: String, val name: String, val host: InetAddress, val port: Int)
 
 /**
- * Looks for Kizuna PCs over mDNS (`_kizuna._tcp`, see docs/PROTOCOL.md).
+ * Looks for Kizuna PCs over mDNS (`_kizuna._tcp`) and, for networks that block
+ * multicast (e.g. phone hotspots), over UDP broadcast (see docs/PROTOCOL.md).
  * `onChange` is called on a background thread with the current list.
  */
 class Discovery(context: Context, private val onChange: (List<FoundPc>) -> Unit) {
@@ -27,8 +34,14 @@ class Discovery(context: Context, private val onChange: (List<FoundPc>) -> Unit)
     private val pendingResolves = ArrayDeque<NsdServiceInfo>()
     private var resolving = false
 
+    /** When each PC found by broadcast last answered (they have no "lost" event). */
+    private val lastAnswer = HashMap<String, Long>()
+    @Volatile private var probing = false
+    private var prober: Thread? = null
+
     fun start() {
         if (listener != null) return
+        startProbing()
         val l = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) = Unit
             override fun onDiscoveryStopped(serviceType: String) = Unit
@@ -48,11 +61,82 @@ class Discovery(context: Context, private val onChange: (List<FoundPc>) -> Unit)
     fun stop() {
         listener?.let { runCatching { nsd.stopServiceDiscovery(it) } }
         listener = null
+        probing = false
+        prober?.interrupt()
+        prober = null
         executor.execute {
             found.clear()
+            lastAnswer.clear()
             pendingResolves.clear()
             publish()
         }
+    }
+
+    /** Broadcasts a probe every few seconds and collects the PCs' replies. */
+    private fun startProbing() {
+        probing = true
+        prober = thread(name = "kizuna-probe", isDaemon = true) {
+            try {
+                DatagramSocket(null).use { socket ->
+                    socket.broadcast = true
+                    socket.soTimeout = 1000
+                    socket.bind(InetSocketAddress(0))
+                    val buffer = ByteArray(2048)
+                    var nextProbe = 0L
+                    while (probing) {
+                        val now = System.currentTimeMillis()
+                        if (now >= nextProbe) {
+                            sendProbes(socket)
+                            nextProbe = now + PROBE_INTERVAL_MS
+                            executor.execute { forgetSilentPcs(now) }
+                        }
+                        val packet = DatagramPacket(buffer, buffer.size)
+                        try {
+                            socket.receive(packet)
+                        } catch (e: SocketTimeoutException) {
+                            continue
+                        }
+                        val host = packet.address as? Inet4Address ?: continue
+                        val announcement = BroadcastDiscovery.parseAnnouncement(packet.data.copyOf(packet.length))
+                            ?: continue
+                        executor.execute { acceptAnnouncement(announcement, host) }
+                    }
+                }
+            } catch (e: Exception) {
+                if (probing) Log.w(TAG, "broadcast discovery stopped", e)
+            }
+        }
+    }
+
+    private fun sendProbes(socket: DatagramSocket) {
+        val probe = BroadcastDiscovery.probe()
+        val targets = linkedSetOf<InetAddress>(InetAddress.getByName("255.255.255.255"))
+        // Also each interface's subnet broadcast: some networks drop 255.255.255.255.
+        runCatching {
+            NetworkInterface.getNetworkInterfaces().toList()
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { it.interfaceAddresses }
+                .mapNotNullTo(targets) { it.broadcast }
+        }
+        for (target in targets) {
+            runCatching { socket.send(DatagramPacket(probe, probe.size, target, BroadcastDiscovery.PORT)) }
+        }
+    }
+
+    private fun acceptAnnouncement(announcement: BroadcastDiscovery.Announcement, host: InetAddress) {
+        lastAnswer[announcement.id] = System.currentTimeMillis()
+        val pc = FoundPc(announcement.id, announcement.name, host, announcement.port)
+        if (found[pc.id] != pc) {
+            found[pc.id] = pc
+            publish()
+        }
+    }
+
+    private fun forgetSilentPcs(now: Long) {
+        val silent = lastAnswer.filterValues { now - it > 3 * PROBE_INTERVAL_MS }.keys
+        if (silent.isEmpty()) return
+        silent.forEach { lastAnswer.remove(it); found.remove(it) }
+        publish()
     }
 
     private fun resolve(info: NsdServiceInfo) {
@@ -116,6 +200,7 @@ class Discovery(context: Context, private val onChange: (List<FoundPc>) -> Unit)
         private const val TAG = "KizunaDiscovery"
         const val SERVICE_TYPE = "_kizuna._tcp"
         const val PROTOCOL_VERSION = "0"
+        private const val PROBE_INTERVAL_MS = 5_000L
 
         fun isDeviceId(id: String) = id.length == 32 && id.all { it in '0'..'9' || it in 'a'..'f' }
     }

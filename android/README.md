@@ -7,9 +7,9 @@ third-party runtime dependencies: only the Android SDK.
 
 - Device identity: ECDSA P-256 key in the Android Keystore (it never leaves the
   phone), with the self-signed certificate the Keystore creates for it
-- Discovery of PCs over mDNS (`NsdManager`, `_kizuna._tcp`)
-- Connecting by address, for networks that block multicast (some hotspots,
-  guest networks and mesh routers)
+- Discovery of PCs over mDNS (`NsdManager`, `_kizuna._tcp`) and over UDP
+  broadcast, which also works on phone hotspots (they block multicast)
+- Connecting by address, as a last resort
 - TLS 1.3 connection with the phone's certificate
 - Pairing as the initiator: the phone shows the 6-digit code, which is typed on
   the PC (see [docs/PROTOCOL.md](../docs/PROTOCOL.md))

@@ -1,3 +1,4 @@
+mod broadcast;
 mod discovery;
 mod identity;
 mod pairing;
@@ -93,11 +94,19 @@ async fn run_daemon(dir: &Path) -> Result<()> {
     let port = server.local_addr()?.port();
     println!("TLS 1.3 server listening on port {port}");
 
-    let discovery = Discovery::start(LocalDevice {
+    let local = LocalDevice {
         id: identity.device_id(),
         name: device_name.clone(),
         port,
-    })?;
+    };
+    // For networks without multicast (e.g. phone hotspots), also answer UDP probes.
+    let responder = broadcast::Responder::bind(broadcast::bind_addr(), &local).await?;
+    tokio::spawn(async move {
+        if let Err(e) = responder.run().await {
+            eprintln!("Discovery responder stopped: {e:#}");
+        }
+    });
+    let discovery = Discovery::start(local)?;
     let mut browser = discovery.browse()?;
     tokio::spawn(async move {
         while let Some(event) = browser.next().await {

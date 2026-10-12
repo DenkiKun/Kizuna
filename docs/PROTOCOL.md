@@ -2,7 +2,7 @@
 
 ## Layers
 
-1. **Discovery**: mDNS announcement of `_kizuna._tcp.local` with the device name and port.
+1. **Discovery**: mDNS announcement of `_kizuna._tcp.local` with the device name and port, plus UDP broadcast probes for networks without multicast.
 2. **Transport**: TCP with TLS 1.3. Each device generates a key pair and a self-signed certificate on first run.
 3. **Pairing**: manual confirmation of a 6-digit code derived from both certificates and random nonces (see below). Afterwards, only paired devices are accepted.
 4. **Messages**: newline-delimited JSON, each with a `type` and a `body`.
@@ -22,8 +22,24 @@
   - `v`: protocol version (currently `0`); announcements with any other version are ignored
 - Announced port: the TLS server's port (on the PC, `47820/tcp` by default)
 - For now, only IPv4 addresses are announced and used.
-- Some networks block multicast between devices (some hotspots, guest networks and mesh routers), so mDNS never arrives. Clients must also allow connecting by address (`host[:port]`, port `47820` by default). Without an announcement there is no device ID to compare, but trust still comes from pairing and the fingerprint.
-- A client that found a PC over mDNS checks that the PC's certificate fingerprint starts with the announced device ID.
+- A client that found a PC (over mDNS or broadcast) checks that the PC's certificate fingerprint starts with the announced device ID.
+
+## Discovery (UDP broadcast)
+
+Some networks block multicast between devices, so mDNS never arrives: phone hotspots in particular, but also some guest networks and mesh routers. Broadcast usually still works there, so PCs also answer probes on **UDP port 47820**:
+
+```
+client → 255.255.255.255:47820 (and each subnet broadcast)
+         {"type":"discovery.probe","body":{"v":"0"}}
+PC     → straight back to the sender
+         {"type":"discovery.announce","body":{"v":"0","id":"<device ID>","name":"<name>","port":47820}}
+```
+
+- One JSON object per datagram, at most 1024 bytes; anything else is ignored.
+- The PC only answers private, link-local and loopback IPv4 addresses, at most once per second per address, so it cannot be used to flood a third party.
+- The client probes every 5 s while it is looking for PCs, and forgets a PC that has not answered for 15 s.
+- The announcement is treated like an mDNS one: `name` is cleaned and `id` must be 32 lowercase hexadecimal characters.
+- If neither mDNS nor broadcast works, clients must also allow connecting by address (`host[:port]`, port `47820` by default). Without an announcement there is no device ID to compare, but trust still comes from pairing and the fingerprint.
 
 ## Transport (TLS)
 

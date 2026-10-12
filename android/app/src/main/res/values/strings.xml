@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kizuna</string>
+    <string name="tagline">Your phone and your PC, together.</string>
     <string name="pcs_on_network">PCs on this network</string>
+    <string name="paired">Paired</string>
     <string name="searching">Looking for PCs running Kizuna…</string>
-    <string name="pc_entry">%1$s\n%2$s</string>
-    <string name="pc_entry_paired">%1$s (paired)\n%2$s</string>
     <string name="connecting">Connecting to %1$s…</string>
     <string name="error">Error: %1$s</string>
     <string name="identity_not_ready">the device identity is not ready yet</string>

@@ -21,7 +21,7 @@ use discovery::{Discovery, DiscoveryEvent, LocalDevice};
 use identity::{Fingerprint, Identity};
 use pairing::{Keys, Outcome};
 use prompt::{Mode, Prompter};
-use protocol::{read_message, write_message, Message};
+use protocol::{escape_untrusted, read_message, write_message, Message};
 use trust::{TrustStore, TrustedDevice};
 
 /// Porta TCP do servidor TLS. Fixa, para poder ser aberta na firewall.
@@ -134,7 +134,8 @@ async fn run_daemon(dir: &Path) -> Result<()> {
                             Err(e) => Err(e),
                         };
                         if let Err(e) = result {
-                            eprintln!("Ligação de {peer}: {e:#}");
+                            // Segunda defesa: o erro pode citar dados do outro lado.
+                            eprintln!("Ligação de {peer}: {}", escape_untrusted(&format!("{e:#}")));
                         }
                     });
                 }

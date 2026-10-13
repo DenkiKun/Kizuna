@@ -5,8 +5,8 @@
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M4,3H20A2,2 0 0 1 22,5V15A2,2 0 0 1 20,17H4A2,2 0 0 1 2,15V5A2,2 0 0 1 4,3ZM5,5H19A1,1 0 0 1 20,6V14A1,1 0 0 1 19,15H5A1,1 0 0 1 4,14V6A1,1 0 0 1 5,5Z" />
+        android:pathData="M4.5,3.5H19.5A2.5,2.5 0 0 1 22,6V14.5A2.5,2.5 0 0 1 19.5,17H4.5A2.5,2.5 0 0 1 2,14.5V6A2.5,2.5 0 0 1 4.5,3.5ZM4.5,5.1H19.5A0.9,0.9 0 0 1 20.4,6V14.5A0.9,0.9 0 0 1 19.5,15.4H4.5A0.9,0.9 0 0 1 3.6,14.5V6A0.9,0.9 0 0 1 4.5,5.1Z" />
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M11,17H13V19.5H11ZM8,19.5H16A0.75,0.75 0 0 1 16,21H8A0.75,0.75 0 0 1 8,19.5Z" />
+        android:pathData="M8.8,19.2H15.2A0.8,0.8 0 0 1 15.2,20.8H8.8A0.8,0.8 0 0 1 8.8,19.2Z" />
 </vector>

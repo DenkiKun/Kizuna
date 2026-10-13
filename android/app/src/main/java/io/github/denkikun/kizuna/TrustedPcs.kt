@@ -8,6 +8,10 @@ class TrustedPcs(context: Context) {
 
     fun nameOf(fingerprint: ByteArray): String? = prefs.getString(Hex.encode(fingerprint), null)
 
+    fun hasAny(): Boolean = prefs.all.isNotEmpty()
+
+    fun names(): List<String> = prefs.all.values.filterIsInstance<String>()
+
     /** `true` if a paired PC has this device ID (the start of its fingerprint). */
     fun isPaired(deviceId: String): Boolean = prefs.all.keys.any { it.startsWith(deviceId) }
 

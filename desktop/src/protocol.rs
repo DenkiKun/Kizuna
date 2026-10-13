@@ -23,6 +23,10 @@ pub enum Message {
     PairAccept,
     #[serde(rename = "pair.reject")]
     PairReject,
+    #[serde(rename = "ping")]
+    Ping,
+    #[serde(rename = "pong")]
+    Pong,
     #[serde(rename = "notification.posted")]
     NotificationPosted {
         app: String,
@@ -48,6 +52,8 @@ impl Message {
             Message::PairNonce { .. } => "pair.nonce",
             Message::PairAccept => "pair.accept",
             Message::PairReject => "pair.reject",
+            Message::Ping => "ping",
+            Message::Pong => "pong",
             Message::NotificationPosted { .. } => "notification.posted",
             Message::ClipboardUpdate { .. } => "clipboard.update",
             Message::FileOffer { .. } => "file.offer",

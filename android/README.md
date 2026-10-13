@@ -13,6 +13,9 @@ third-party runtime dependencies: only the Android SDK.
 - TLS 1.3 connection with the phone's certificate
 - Pairing as the initiator: the phone shows the 6-digit code, which is typed on
   the PC (see [docs/PROTOCOL.md](../docs/PROTOCOL.md))
+- Staying connected to the paired PC: a foreground service (always with a
+  visible notification, with a Disconnect action) keeps the session alive and
+  reconnects on its own
 
 ## Building
 
@@ -28,7 +31,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Next MVP components
 
 - `NotificationListenerService`: captures notifications and sends `notification.posted`
-- Foreground service: keeps the connection to the PC, always with a visible notification
 - QR scanner for pairing
 
 ## Notes

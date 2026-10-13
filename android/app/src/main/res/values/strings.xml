@@ -1,25 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kizuna</string>
-    <string name="tagline">Your phone and your PC, together.</string>
-    <string name="pcs_on_network">PCs on this network</string>
+    <string name="computers">Computers</string>
+    <string name="searching">Looking for computers running Kizuna…</string>
     <string name="paired">Paired</string>
-    <string name="searching">Looking for PCs running Kizuna…</string>
+    <string name="pair">Pair</string>
+    <string name="cant_find_computer">Can’t find your computer? Connect by address</string>
+    <string name="address_hint">Computer address, e.g. 192.168.1.20</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="stop">Stop</string>
+    <string name="invalid_address">That address is not valid.</string>
     <string name="connecting">Connecting to %1$s…</string>
-    <string name="error">Error: %1$s</string>
+    <string name="error">Could not connect: %1$s</string>
     <string name="identity_not_ready">the device identity is not ready yet</string>
-    <string name="certificate_mismatch">the PC\'s certificate does not match its announcement</string>
-    <string name="connected_paired">Connected to %1$s (paired).</string>
+    <string name="certificate_mismatch">the computer’s certificate does not match its announcement</string>
+    <string name="already_paired">%1$s is already paired.</string>
     <string name="paired_with">Paired with %1$s.</string>
     <string name="pairing_cancelled">Pairing cancelled.</string>
-    <string name="pairing_rejected_by_pc">The PC rejected the pairing.</string>
-    <string name="pair_with">Pair with %1$s?</string>
-    <string name="type_code_on_pc">Type this code on the PC, then tap Accept.</string>
-    <string name="pc_fingerprint">PC fingerprint:\n%1$s</string>
-    <string name="connect_by_address">Or connect by address</string>
-    <string name="address_hint">PC address, e.g. 192.168.1.20</string>
-    <string name="connect">Connect</string>
-    <string name="invalid_address">Invalid address.</string>
+    <string name="pairing_rejected_by_pc">The computer rejected the pairing.</string>
+
+    <string name="state_not_paired">Not paired yet</string>
+    <string name="state_not_paired_detail">Choose a computer below to pair with it.</string>
+    <string name="state_off">Disconnected</string>
+    <string name="state_off_detail">Not connected to %1$s.</string>
+    <string name="state_searching">Looking for your computer</string>
+    <string name="state_searching_detail">Make sure Kizuna is open on it and both are on the same network.</string>
+    <string name="state_connecting">Connecting to %1$s…</string>
+    <string name="state_connected">Connected to %1$s</string>
+    <string name="state_connected_detail">Encrypted connection on your local network</string>
+    <string name="state_connected_address">%1$s · encrypted</string>
+    <string name="state_retrying">Connection to %1$s lost</string>
+    <string name="state_retrying_detail">Trying again in %1$d s</string>
+
+    <string name="channel_connection">Connection</string>
+    <string name="channel_connection_description">Shown while Kizuna is connected to your computer.</string>
+
+    <string name="pair_with">Pair with %1$s</string>
+    <string name="type_code_on_pc">Type this code on the computer, then tap Accept.</string>
+    <string name="pc_fingerprint">Computer fingerprint\n%1$s</string>
     <string name="accept">Accept</string>
-    <string name="reject">Reject</string>
+    <string name="cancel">Cancel</string>
 </resources>

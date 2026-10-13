@@ -22,6 +22,8 @@ sealed class Message(val type: String) {
     data class PairNonce(val nonce: String) : Message("pair.nonce")
     data object PairAccept : Message("pair.accept")
     data object PairReject : Message("pair.reject")
+    data object Ping : Message("ping")
+    data object Pong : Message("pong")
 
     /** A valid message this version of the app does not handle yet. */
     data class Other(val kind: String) : Message(kind)
@@ -31,7 +33,7 @@ sealed class Message(val type: String) {
             is PairRequest -> JSONObject().put("device_name", deviceName)
             is PairCommit -> JSONObject().put("device_name", deviceName).put("commitment", commitment)
             is PairNonce -> JSONObject().put("nonce", nonce)
-            PairAccept, PairReject -> null
+            PairAccept, PairReject, Ping, Pong -> null
             is Other -> throw IllegalStateException("cannot send $kind")
         }
         val json = JSONObject().put("type", type)
@@ -50,6 +52,8 @@ sealed class Message(val type: String) {
                     "pair.nonce" -> PairNonce(body!!.getString("nonce"))
                     "pair.accept" -> PairAccept
                     "pair.reject" -> PairReject
+                    "ping" -> Ping
+                    "pong" -> Pong
                     else -> Other(type)
                 }
             } catch (e: JSONException) {

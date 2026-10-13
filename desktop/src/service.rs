@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
-use tokio::io::{AsyncBufRead, BufReader};
+use tokio::io::{AsyncBufRead, AsyncWrite, BufReader};
 use tokio::sync::Semaphore;
 
 use crate::broadcast;
@@ -27,6 +27,10 @@ pub const DEFAULT_PORT: u16 = 47820;
 
 /// Time an unpaired device has to request pairing.
 const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// A paired device that sends nothing (not even `ping`) for this long is
+/// considered gone. Phones ping every 30 s.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Something that happened, for the user interface to show.
 #[derive(Debug, Clone)]
@@ -56,7 +60,6 @@ pub enum Event {
     },
     Paired {
         name: String,
-        fingerprint: Fingerprint,
     },
     PairingRejected,
     PairingRejectedByPeer,
@@ -187,7 +190,7 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, shared: &Sha
             fingerprint,
             peer,
         });
-        return session(&mut reader, &device.name, fingerprint, shared).await;
+        return session(&mut reader, &mut writer, &device.name, fingerprint, shared).await;
     }
 
     // An unknown device may only request pairing.
@@ -226,9 +229,14 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, shared: &Sha
                 .add(TrustedDevice::new(fingerprint, peer_name.clone()))?;
             (shared.events)(Event::Paired {
                 name: peer_name.clone(),
-                fingerprint,
             });
-            session(&mut reader, &peer_name, fingerprint, shared).await
+            // The pairing connection carries on as the device's session.
+            (shared.events)(Event::Connected {
+                name: peer_name.clone(),
+                fingerprint,
+                peer,
+            });
+            session(&mut reader, &mut writer, &peer_name, fingerprint, shared).await
         }
         Outcome::RejectedLocally => {
             (shared.events)(Event::PairingRejected);
@@ -241,22 +249,35 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, shared: &Sha
     }
 }
 
-/// Connection with a paired device. For now it only reports the messages; the
-/// features (notifications, clipboard, files) come next.
-async fn session<R: AsyncBufRead + Unpin>(
+/// Connection with a paired device: answers `ping` and reports the other
+/// messages (the features themselves come next). Ends when the device closes
+/// the connection or stays silent for [`IDLE_TIMEOUT`].
+async fn session<R, W>(
     reader: &mut R,
+    writer: &mut W,
     name: &str,
     fingerprint: Fingerprint,
     shared: &Shared,
-) -> Result<()> {
+) -> Result<()>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let result = async {
-        while let Some(message) = read_message(reader).await? {
-            (shared.events)(Event::Received {
-                name: name.to_string(),
-                kind: message.kind(),
-            });
+        loop {
+            let message = tokio::time::timeout(IDLE_TIMEOUT, read_message(reader))
+                .await
+                .map_err(|_| anyhow!("no activity for {} s", IDLE_TIMEOUT.as_secs()))??;
+            match message {
+                None => return Ok(()),
+                Some(Message::Ping) => write_message(writer, &Message::Pong).await?,
+                Some(Message::Pong) => {}
+                Some(message) => (shared.events)(Event::Received {
+                    name: name.to_string(),
+                    kind: message.kind(),
+                }),
+            }
         }
-        Ok(())
     }
     .await;
     (shared.events)(Event::Disconnected {
@@ -273,4 +294,84 @@ pub fn device_name() -> String {
         .map(|name| name.trim().to_string())
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "Linux".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use tokio::io::{duplex, split, AsyncWriteExt};
+
+    fn shared(events: Arc<Mutex<Vec<Event>>>) -> Shared {
+        let dir = tempfile::tempdir().unwrap();
+        Shared {
+            fingerprint: hex::encode([1; 32]).parse().unwrap(),
+            device_name: "PC".into(),
+            trust: TrustStore::open(dir.path()),
+            events: Arc::new(move |e| events.lock().unwrap().push(e)),
+            confirm: Arc::new(|_| Box::pin(async { false })),
+            pairing_slot: Semaphore::new(1),
+        }
+    }
+
+    fn phone() -> Fingerprint {
+        hex::encode([2; 32]).parse().unwrap()
+    }
+
+    #[tokio::test]
+    async fn answers_ping_and_reports_other_messages() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let shared = shared(events.clone());
+        let (pc_side, phone_side) = duplex(4096);
+        let (pc_read, mut pc_write) = split(pc_side);
+        let (phone_read, mut phone_write) = split(phone_side);
+        let mut pc_read = BufReader::new(pc_read);
+        let mut phone_read = BufReader::new(phone_read);
+
+        let pc = async { session(&mut pc_read, &mut pc_write, "Phone", phone(), &shared).await };
+        let phone = async {
+            write_message(&mut phone_write, &Message::Ping)
+                .await
+                .unwrap();
+            let reply = read_message(&mut phone_read).await.unwrap();
+            let text = Message::ClipboardUpdate { text: "x".into() };
+            write_message(&mut phone_write, &text).await.unwrap();
+            phone_write.shutdown().await.unwrap();
+            reply
+        };
+        let (result, reply) = tokio::join!(pc, phone);
+        result.unwrap();
+        assert_eq!(reply, Some(Message::Pong));
+
+        let events = events.lock().unwrap();
+        assert!(matches!(
+            &events[0],
+            Event::Received {
+                kind: "clipboard.update",
+                ..
+            }
+        ));
+        assert!(matches!(&events[1], Event::Disconnected { name, .. } if name == "Phone"));
+        assert_eq!(events.len(), 2, "ping/pong must not be reported");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn silent_device_is_disconnected_after_the_idle_timeout() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let shared = shared(events.clone());
+        let (pc_side, _phone_side) = duplex(4096);
+        let (pc_read, mut pc_write) = split(pc_side);
+        let mut pc_read = BufReader::new(pc_read);
+
+        let started = tokio::time::Instant::now();
+        let err = session(&mut pc_read, &mut pc_write, "Phone", phone(), &shared)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("no activity"), "{err}");
+        assert!(started.elapsed() >= IDLE_TIMEOUT);
+        assert!(matches!(
+            &events.lock().unwrap()[0],
+            Event::Disconnected { .. }
+        ));
+    }
 }

@@ -92,6 +92,15 @@ Implementations must reproduce these values (checked by the tests on the PC and 
 | commitment | `6923165278d40d25bce69f08e8857bf93f90dc4eedf9077d6ea6e695fbf708a0` |
 | code | `158474` (shown as `158 474`) |
 
+## Session
+
+After pairing, and on every later connection from a paired device, the connection stays open as a session:
+
+- The phone sends `ping` every 30 s; the other side answers `pong` straight away. Either side may ping.
+- A side that receives nothing (not even `pong`) for 90 s considers the other gone and closes the connection.
+- The phone reconnects on its own when the session ends, waiting 2 s, then twice as long after each failure, up to 30 s.
+- On Android the session runs in a foreground service, so its notification is always visible while connected; the user can disconnect from it.
+
 ## Message types (MVP)
 
 | type | direction | description |
@@ -100,6 +109,7 @@ Implementations must reproduce these values (checked by the tests on the PC and 
 | `pair.commit` | R → I | responder's name and commitment to its nonce |
 | `pair.nonce` | both | random nonce (32 bytes) |
 | `pair.accept` / `pair.reject` | both | the user's decision |
+| `ping` / `pong` | both | keeps the session alive (no body) |
 | `notification.posted` | Android → PC | new notification (app, title, text) |
 | `notification.dismissed` | both | notification dismissed |
 | `clipboard.update` | both | new clipboard contents |

@@ -101,6 +101,13 @@ After pairing, and on every later connection from a paired device, the connectio
 - The phone reconnects on its own when the session ends, waiting 2 s, then twice as long after each failure, up to 30 s.
 - On Android the session runs in a foreground service, so its notification is always visible while connected; the user can disconnect from it.
 
+## Notifications (phone → PC)
+
+- `notification.posted {id, app, title, text}`: a notification appeared on the phone. `id` is the phone's key for it (opaque, at most 200 characters); `app` is the app's name as shown on the phone; `title` and `text` are what the notification shows (the expanded text when there is one). The PC shows it as a desktop notification; a second `posted` with the same `id` replaces the first.
+- `notification.dismissed {id}`: the notification was dismissed on the phone; the PC closes its copy.
+- The phone only sends notifications after the user grants it notification access in the system settings, and never sends ongoing, foreground-service, group-summary or secret ones.
+- The PC cleans the text (control and bidirectional characters removed, lengths bounded: 64 characters for `app`, 200 for `title`, 1000 for `text`) and escapes markup before handing it to the desktop.
+
 ## Message types (MVP)
 
 | type | direction | description |
@@ -110,8 +117,8 @@ After pairing, and on every later connection from a paired device, the connectio
 | `pair.nonce` | both | random nonce (32 bytes) |
 | `pair.accept` / `pair.reject` | both | the user's decision |
 | `ping` / `pong` | both | keeps the session alive (no body) |
-| `notification.posted` | Android → PC | new notification (app, title, text) |
-| `notification.dismissed` | both | notification dismissed |
+| `notification.posted` | Android → PC | new or updated notification (`id`, `app`, `title`, `text`) |
+| `notification.dismissed` | Android → PC | notification dismissed on the phone (`id`) |
 | `clipboard.update` | both | new clipboard contents |
 | `file.offer` | both | offer to send a file (name, size, hash) |
 | `file.accept` / `file.reject` | both | reply |

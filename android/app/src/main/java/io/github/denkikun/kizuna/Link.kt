@@ -1,7 +1,9 @@
 package io.github.denkikun.kizuna
 
+import android.util.Log
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /** How often the phone pings the PC while connected. */
@@ -42,6 +44,26 @@ object Link {
         if (newState == state) return
         state = newState
         observers.forEach { it(newState) }
+    }
+
+    /** Sends on the current session, set by the connection service while connected. */
+    @Volatile
+    var sender: ((Message) -> Unit)? = null
+
+    /** Writes happen here, never on the caller's thread (which may be the main thread). */
+    private val outbox = Executors.newSingleThreadExecutor { r -> Thread(r, "kizuna-send").apply { isDaemon = true } }
+
+    /** Queues `message` for the PC; `false` if there is no session right now. */
+    fun send(message: Message): Boolean {
+        val send = sender ?: return false
+        outbox.execute {
+            try {
+                send(message)
+            } catch (e: IOException) {
+                Log.w("KizunaLink", "could not send ${message.type}: ${e.message}")
+            }
+        }
+        return true
     }
 }
 

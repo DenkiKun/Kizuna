@@ -3,6 +3,7 @@ package io.github.denkikun.kizuna
 import android.Manifest
 import android.app.Activity
 import android.app.Dialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -22,6 +23,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import java.net.InetAddress
 import java.util.concurrent.Executors
@@ -36,6 +38,10 @@ class MainActivity : Activity() {
     private lateinit var statusAction: TextView
     private lateinit var list: LinearLayout
     private lateinit var message: TextView
+    private lateinit var notifTitle: TextView
+    private lateinit var notifDetail: TextView
+    private lateinit var notifButton: TextView
+    private lateinit var notifSwitch: Switch
     private var identity: DeviceIdentity? = null
     private var codeDialog: Dialog? = null
     private var busy = false
@@ -62,6 +68,7 @@ class MainActivity : Activity() {
         super.onResume()
         Link.observe(onLinkState)
         discovery.start()
+        refreshNotifications()
     }
 
     override fun onPause() {
@@ -97,6 +104,9 @@ class MainActivity : Activity() {
         }
         column.addView(list)
         column.addView(addressSection())
+
+        column.addView(sectionTitle(R.string.notifications))
+        column.addView(notificationsCard())
 
         message = Ui.text(this, 14f, Ui.TEXT_SECONDARY).apply {
             setPadding(dp(4), dp(12), dp(4), 0)
@@ -150,6 +160,67 @@ class MainActivity : Activity() {
             topMargin = dp(16)
         })
         return card
+    }
+
+    /** Forwarding the phone's notifications: needs system-granted access, then a switch. */
+    private fun notificationsCard(): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.surface(this@MainActivity)
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_bell)
+            imageTintList = android.content.res.ColorStateList.valueOf(Ui.TEXT_SECONDARY)
+            background = Ui.surface(this@MainActivity, 14)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, dp(8), 0)
+        }
+        notifTitle = Ui.text(this, 16f, medium = true)
+        notifDetail = Ui.text(this, 13f, Ui.TEXT_SECONDARY).apply { setPadding(0, dp(2), 0, 0) }
+        texts.addView(notifTitle)
+        texts.addView(notifDetail)
+        header.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        notifSwitch = Switch(this).apply {
+            val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+            thumbTintList = android.content.res.ColorStateList(states, intArrayOf(Ui.ACCENT, Ui.TEXT_SECONDARY))
+            trackTintList = android.content.res.ColorStateList(states, intArrayOf(0x66000000 or (Ui.ACCENT and 0xFFFFFF), 0x33FFFFFF))
+            setOnCheckedChangeListener { _, checked ->
+                AppSettings.setForwardNotifications(this@MainActivity, checked)
+                refreshNotifications()
+            }
+        }
+        header.addView(notifSwitch)
+        card.addView(header)
+        notifButton = Ui.button(this, getString(R.string.allow_access), primary = true).apply {
+            setOnClickListener { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        }
+        card.addView(notifButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(14)
+        })
+        return card
+    }
+
+    private fun refreshNotifications() {
+        val access = NotificationForwarder.hasAccess(this)
+        val forwarding = AppSettings.forwardNotifications(this)
+        notifButton.visibility = if (access) View.GONE else View.VISIBLE
+        notifSwitch.visibility = if (access) View.VISIBLE else View.GONE
+        if (notifSwitch.isChecked != (access && forwarding)) notifSwitch.isChecked = access && forwarding
+        val (title, detail) = when {
+            !access -> R.string.notifications_off_title to R.string.notifications_off_detail
+            forwarding -> R.string.notifications_on_title to R.string.notifications_on_detail
+            else -> R.string.notifications_paused_title to R.string.notifications_paused_detail
+        }
+        notifTitle.text = getString(title)
+        notifDetail.text = getString(detail)
     }
 
     private fun sectionTitle(res: Int) = Ui.text(this, 15f, Ui.TEXT_SECONDARY, medium = true).apply {

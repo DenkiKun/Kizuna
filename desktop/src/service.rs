@@ -17,6 +17,7 @@ use tokio::sync::Semaphore;
 use crate::broadcast;
 use crate::discovery::{Discovery, DiscoveryEvent, LocalDevice, RemoteDevice};
 use crate::identity::{Fingerprint, Identity};
+use crate::notify::{Notifier, Posted};
 use crate::pairing::{self, Keys, Outcome, Prompt};
 use crate::protocol::{escape_untrusted, read_message, write_message, Message};
 use crate::tls;
@@ -58,6 +59,13 @@ pub enum Event {
         name: String,
         kind: &'static str,
     },
+    /// The phone forwarded a notification; it was shown on the desktop.
+    Notification {
+        name: String,
+        app: String,
+        title: String,
+    },
+    DesktopNotificationFailed(String),
     Paired {
         name: String,
     },
@@ -88,6 +96,7 @@ struct Shared {
     confirm: Confirm,
     /// Only one pairing at a time (avoids queues of bogus requests).
     pairing_slot: Semaphore,
+    notifier: Arc<Notifier>,
 }
 
 /// Runs until `shutdown` completes, then withdraws the mDNS announcement.
@@ -147,6 +156,7 @@ pub async fn run(
         events: events.clone(),
         confirm,
         pairing_slot: Semaphore::new(1),
+        notifier: Arc::new(Notifier::new()),
     });
 
     tokio::pin!(shutdown);
@@ -272,6 +282,33 @@ where
                 None => return Ok(()),
                 Some(Message::Ping) => write_message(writer, &Message::Pong).await?,
                 Some(Message::Pong) => {}
+                Some(Message::NotificationPosted {
+                    id,
+                    app,
+                    title,
+                    text,
+                }) => {
+                    let posted = Posted::cleaned(&id, &app, &title, &text);
+                    (shared.events)(Event::Notification {
+                        name: name.to_string(),
+                        app: posted.app.clone(),
+                        title: posted.title.clone(),
+                    });
+                    let notifier = shared.notifier.clone();
+                    let events = shared.events.clone();
+                    let device_name = name.to_string();
+                    // The D-Bus call blocks; keep it off the async runtime.
+                    tokio::task::spawn_blocking(move || {
+                        if let Err(e) = notifier.post(fingerprint, &device_name, &posted) {
+                            events(Event::DesktopNotificationFailed(format!("{e:#}")));
+                        }
+                    });
+                }
+                Some(Message::NotificationDismissed { id }) => {
+                    let notifier = shared.notifier.clone();
+                    let id = Posted::cleaned(&id, "", "", "").id;
+                    tokio::task::spawn_blocking(move || notifier.dismiss(fingerprint, &id));
+                }
                 Some(message) => (shared.events)(Event::Received {
                     name: name.to_string(),
                     kind: message.kind(),
@@ -311,6 +348,7 @@ mod tests {
             events: Arc::new(move |e| events.lock().unwrap().push(e)),
             confirm: Arc::new(|_| Box::pin(async { false })),
             pairing_slot: Semaphore::new(1),
+            notifier: Arc::new(Notifier::new()),
         }
     }
 

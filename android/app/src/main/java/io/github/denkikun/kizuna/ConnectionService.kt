@@ -99,11 +99,13 @@ class ConnectionService : Service() {
                     conn.socket.soTimeout = IDLE_TIMEOUT_MS
                     Link.publish(LinkState.Connected(name, pc.host.hostAddress ?: ""))
                     delayMs = MIN_RETRY_MS
+                    Link.sender = conn.channel::send
                     Session(conn.channel).run()
                 }
             } catch (e: Exception) {
                 if (running) Log.i(TAG, "connection to ${pc.name} ended: ${e.message}")
             } finally {
+                Link.sender = null
                 socket = null
             }
             if (!running) break

@@ -33,6 +33,15 @@
     <string name="state_retrying">Connection to %1$s lost</string>
     <string name="state_retrying_detail">Trying again in %1$d s</string>
 
+    <string name="notifications">Notifications</string>
+    <string name="notifications_off_title">Not sent to your computer</string>
+    <string name="notifications_off_detail">Kizuna needs notification access to show your phone’s notifications on the computer. Nothing is read until you allow it.</string>
+    <string name="notifications_on_title">Sent to your computer</string>
+    <string name="notifications_on_detail">New notifications appear on the computer while connected.</string>
+    <string name="notifications_paused_title">Paused</string>
+    <string name="notifications_paused_detail">Turn it on to show your phone’s notifications on the computer.</string>
+    <string name="allow_access">Allow access</string>
+
     <string name="channel_connection">Connection</string>
     <string name="channel_connection_description">Shown while Kizuna is connected to your computer.</string>
 

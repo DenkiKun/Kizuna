@@ -301,6 +301,12 @@ impl App {
             Event::PairingRejected => self.log("Pairing cancelled.".into()),
             Event::PairingRejectedByPeer => self.log("The phone cancelled the pairing.".into()),
             Event::Received { name, kind } => self.log(format!("{name}: {kind}")),
+            Event::Notification { name, app, title } => {
+                self.log(format!("{name} · {app}: {title}"))
+            }
+            Event::DesktopNotificationFailed(error) => {
+                self.log(format!("Could not show a notification: {error}"))
+            }
             Event::ConnectionError { peer, error } => {
                 self.log(format!("Connection from {}: {error}", peer.ip()))
             }

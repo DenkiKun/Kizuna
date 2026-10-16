@@ -34,41 +34,27 @@ const ICON: &[u8] = include_bytes!("../../data/icons/io.github.DenkiKun.Kizuna.s
 const PHONE: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#fff" fill-rule="evenodd" d="M8 2h8a2.5 2.5 0 0 1 2.5 2.5v15A2.5 2.5 0 0 1 16 22H8a2.5 2.5 0 0 1-2.5-2.5v-15A2.5 2.5 0 0 1 8 2Zm0 1.6h8a.9.9 0 0 1 .9.9v15a.9.9 0 0 1-.9.9H8a.9.9 0 0 1-.9-.9v-15a.9.9 0 0 1 .9-.9ZM10.5 18h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z"/></svg>"##;
 
 pub fn run(dir: PathBuf) -> anyhow::Result<()> {
-    // KWin can blur what is behind a translucent window; elsewhere the window stays opaque.
-    let translucent = std::env::var("XDG_CURRENT_DESKTOP")
-        .map(|desktop| desktop.split(':').any(|d| d.eq_ignore_ascii_case("KDE")))
-        .unwrap_or(false);
-    iced::application(
-        move || App::new(dir.clone(), translucent),
-        App::update,
-        App::view,
-    )
-    .title("Kizuna")
-    .subscription(App::subscription)
-    .theme(|_: &App| Theme::Dark)
-    .style(move |_, _| iced::theme::Style {
-        background_color: if translucent {
-            Color::TRANSPARENT
-        } else {
-            BACKGROUND
-        },
-        text_color: TEXT,
-    })
-    .window(window::Settings {
-        size: Size::new(920.0, 620.0),
-        min_size: Some(Size::new(720.0, 500.0)),
-        exit_on_close_request: false,
-        transparent: translucent,
-        blur: translucent,
-        // Lets the desktop match the window to data/io.github.DenkiKun.Kizuna.desktop (and its icon).
-        platform_specific: window::settings::PlatformSpecific {
-            application_id: APP_ID.into(),
-            ..Default::default()
-        },
-        ..window::Settings::default()
-    })
-    .run()
-    .map_err(|e| anyhow!("{e}"))
+    iced::application(move || App::new(dir.clone()), App::update, App::view)
+        .title("Kizuna")
+        .subscription(App::subscription)
+        .theme(|_: &App| Theme::Dark)
+        .style(|_, _| iced::theme::Style {
+            background_color: BACKGROUND,
+            text_color: TEXT,
+        })
+        .window(window::Settings {
+            size: Size::new(920.0, 620.0),
+            min_size: Some(Size::new(720.0, 500.0)),
+            exit_on_close_request: false,
+            // Lets the desktop match the window to data/io.github.DenkiKun.Kizuna.desktop (and its icon).
+            platform_specific: window::settings::PlatformSpecific {
+                application_id: APP_ID.into(),
+                ..Default::default()
+            },
+            ..window::Settings::default()
+        })
+        .run()
+        .map_err(|e| anyhow!("{e}"))
 }
 
 /// A one-shot value that can travel inside a (cloneable) message.
@@ -133,7 +119,6 @@ struct Online {
 
 struct App {
     trust: TrustStore,
-    translucent: bool,
     this: Option<This>,
     paired: Vec<TrustedDevice>,
     online: HashMap<Fingerprint, Online>,
@@ -148,12 +133,11 @@ struct App {
 }
 
 impl App {
-    fn new(dir: PathBuf, translucent: bool) -> Self {
+    fn new(dir: PathBuf) -> Self {
         let trust = TrustStore::open(&dir);
         let paired = trust.list().unwrap_or_default();
         Self {
             trust,
-            translucent,
             this: None,
             paired,
             online: HashMap::new(),
@@ -307,6 +291,12 @@ impl App {
             Event::DesktopNotificationFailed(error) => {
                 self.log(format!("Could not show a notification: {error}"))
             }
+            Event::ClipboardReceived { name, chars } => {
+                self.log(format!("{name} sent {chars} characters to the clipboard."))
+            }
+            Event::ClipboardFailed(error) => {
+                self.log(format!("Could not set the clipboard: {error}"))
+            }
             Event::ConnectionError { peer, error } => {
                 self.log(format!("Connection from {}: {error}", peer.ip()))
             }
@@ -362,21 +352,7 @@ impl App {
                 .width(Length::Fill),
         );
 
-        let background = if self.translucent {
-            Color {
-                a: 0.82,
-                ..BACKGROUND
-            }
-        } else {
-            BACKGROUND
-        };
-        let mut layers = stack![container(page)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(move |_| container::Style {
-                background: Some(background.into()),
-                ..container::Style::default()
-            })];
+        let mut layers = stack![container(page).width(Length::Fill).height(Length::Fill)];
         if let Some(pairing) = &self.pairing {
             layers = layers.push(opaque(
                 container(pairing_dialog(pairing))

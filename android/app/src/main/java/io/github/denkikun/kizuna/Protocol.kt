@@ -27,6 +27,7 @@ sealed class Message(val type: String) {
     data class NotificationPosted(val id: String, val app: String, val title: String, val text: String) :
         Message("notification.posted")
     data class NotificationDismissed(val id: String) : Message("notification.dismissed")
+    data class ClipboardUpdate(val text: String) : Message("clipboard.update")
 
     /** A valid message this version of the app does not handle yet. */
     data class Other(val kind: String) : Message(kind)
@@ -38,6 +39,7 @@ sealed class Message(val type: String) {
             is PairNonce -> JSONObject().put("nonce", nonce)
             is NotificationPosted -> JSONObject().put("id", id).put("app", app).put("title", title).put("text", text)
             is NotificationDismissed -> JSONObject().put("id", id)
+            is ClipboardUpdate -> JSONObject().put("text", text)
             PairAccept, PairReject, Ping, Pong -> null
             is Other -> throw IllegalStateException("cannot send $kind")
         }

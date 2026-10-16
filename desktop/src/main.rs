@@ -1,4 +1,5 @@
 mod broadcast;
+mod clipboard;
 mod discovery;
 mod gui;
 mod identity;
@@ -111,6 +112,10 @@ fn print_event(event: Event) {
         Event::DesktopNotificationFailed(error) => {
             eprintln!("Could not show a desktop notification: {error}")
         }
+        Event::ClipboardReceived { name, chars } => {
+            println!("\"{name}\" sent {chars} characters to the clipboard.")
+        }
+        Event::ClipboardFailed(error) => eprintln!("Could not set the clipboard: {error}"),
         Event::Paired { name, .. } => println!("Paired with \"{name}\"."),
         Event::PairingRejected => println!("Pairing rejected."),
         Event::PairingRejectedByPeer => println!("The other device rejected the pairing."),

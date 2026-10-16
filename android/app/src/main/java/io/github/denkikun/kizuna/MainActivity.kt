@@ -3,6 +3,7 @@ package io.github.denkikun.kizuna
 import android.Manifest
 import android.app.Activity
 import android.app.Dialog
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -36,6 +37,7 @@ class MainActivity : Activity() {
     private lateinit var statusTitle: TextView
     private lateinit var statusDetail: TextView
     private lateinit var statusAction: TextView
+    private lateinit var statusClipboard: TextView
     private lateinit var list: LinearLayout
     private lateinit var message: TextView
     private lateinit var notifTitle: TextView
@@ -155,9 +157,15 @@ class MainActivity : Activity() {
         texts.addView(statusDetail)
         header.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         card.addView(header)
+        statusClipboard = Ui.button(this, getString(R.string.send_clipboard), primary = true).apply {
+            setOnClickListener { sendClipboard() }
+        }
+        card.addView(statusClipboard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(16)
+        })
         statusAction = Ui.button(this, "", primary = false)
         card.addView(statusAction, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(16)
+            topMargin = dp(10)
         })
         return card
     }
@@ -349,7 +357,20 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Sends the phone's clipboard text to the computer (reading it needs the app in front, as now). */
+    private fun sendClipboard() {
+        val clip = getSystemService(ClipboardManager::class.java).primaryClip
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+        when {
+            text.isEmpty() -> showMessage(getString(R.string.clipboard_empty))
+            text.length > MAX_CLIPBOARD_CHARS -> showMessage(getString(R.string.clipboard_too_long))
+            Link.send(Message.ClipboardUpdate(text)) -> showMessage(getString(R.string.clipboard_sent))
+            else -> showMessage(getString(R.string.clipboard_not_connected))
+        }
+    }
+
     private fun setStatus(title: String, detail: String, action: String?, onAction: (() -> Unit)?) {
+        statusClipboard.visibility = if (Link.state is LinkState.Connected) View.VISIBLE else View.GONE
         statusTitle.text = title
         statusDetail.text = detail
         statusDetail.visibility = if (detail.isEmpty()) View.GONE else View.VISIBLE
@@ -546,5 +567,6 @@ class MainActivity : Activity() {
     companion object {
         private const val TAG = "Kizuna"
         private const val DEFAULT_PORT = 47820
+        private const val MAX_CLIPBOARD_CHARS = 200_000
     }
 }

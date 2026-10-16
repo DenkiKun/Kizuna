@@ -29,10 +29,13 @@ pub enum Message {
     Pong,
     #[serde(rename = "notification.posted")]
     NotificationPosted {
+        id: String,
         app: String,
         title: String,
         text: String,
     },
+    #[serde(rename = "notification.dismissed")]
+    NotificationDismissed { id: String },
     #[serde(rename = "clipboard.update")]
     ClipboardUpdate { text: String },
     #[serde(rename = "file.offer")]
@@ -55,6 +58,7 @@ impl Message {
             Message::Ping => "ping",
             Message::Pong => "pong",
             Message::NotificationPosted { .. } => "notification.posted",
+            Message::NotificationDismissed { .. } => "notification.dismissed",
             Message::ClipboardUpdate { .. } => "clipboard.update",
             Message::FileOffer { .. } => "file.offer",
         }
@@ -158,6 +162,19 @@ mod tests {
         );
         let reject: Message = serde_json::from_str(r#"{"type":"pair.reject"}"#).unwrap();
         assert_eq!(reject, Message::PairReject);
+        let posted: Message = serde_json::from_str(
+            r#"{"type":"notification.posted","body":{"id":"0|a|1","app":"Mail","title":"Hi","text":"Body"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            posted,
+            Message::NotificationPosted {
+                id: "0|a|1".into(),
+                app: "Mail".into(),
+                title: "Hi".into(),
+                text: "Body".into(),
+            }
+        );
     }
 
     #[test]

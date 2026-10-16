@@ -6,6 +6,7 @@ import android.content.Context
 object AppSettings {
     private const val FILE = "settings"
     private const val AUTO_CONNECT = "auto_connect"
+    private const val FORWARD_NOTIFICATIONS = "forward_notifications"
 
     /** Whether to keep connected to the paired PC (off after the user disconnects). */
     fun autoConnect(context: Context): Boolean =
@@ -13,5 +14,13 @@ object AppSettings {
 
     fun setAutoConnect(context: Context, enabled: Boolean) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(AUTO_CONNECT, enabled).apply()
+    }
+
+    /** Whether to forward the phone's notifications to the PC (needs notification access too). */
+    fun forwardNotifications(context: Context): Boolean =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(FORWARD_NOTIFICATIONS, true)
+
+    fun setForwardNotifications(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(FORWARD_NOTIFICATIONS, enabled).apply()
     }
 }

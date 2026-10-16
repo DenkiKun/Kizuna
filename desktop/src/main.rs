@@ -2,6 +2,7 @@ mod broadcast;
 mod discovery;
 mod gui;
 mod identity;
+mod notify;
 mod pairing;
 mod prompt;
 mod protocol;
@@ -104,6 +105,12 @@ fn print_event(event: Event) {
         Event::Connected { name, peer, .. } => println!("\"{name}\" connected ({peer})"),
         Event::Disconnected { name, .. } => println!("\"{name}\" disconnected."),
         Event::Received { name, kind } => println!("\"{name}\": {kind}"),
+        Event::Notification { name, app, title } => {
+            println!("\"{name}\" · {app}: {title}")
+        }
+        Event::DesktopNotificationFailed(error) => {
+            eprintln!("Could not show a desktop notification: {error}")
+        }
         Event::Paired { name, .. } => println!("Paired with \"{name}\"."),
         Event::PairingRejected => println!("Pairing rejected."),
         Event::PairingRejectedByPeer => println!("The other device rejected the pairing."),

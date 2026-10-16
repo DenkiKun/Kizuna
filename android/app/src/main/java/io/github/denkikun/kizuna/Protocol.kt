@@ -24,6 +24,9 @@ sealed class Message(val type: String) {
     data object PairReject : Message("pair.reject")
     data object Ping : Message("ping")
     data object Pong : Message("pong")
+    data class NotificationPosted(val id: String, val app: String, val title: String, val text: String) :
+        Message("notification.posted")
+    data class NotificationDismissed(val id: String) : Message("notification.dismissed")
 
     /** A valid message this version of the app does not handle yet. */
     data class Other(val kind: String) : Message(kind)
@@ -33,6 +36,8 @@ sealed class Message(val type: String) {
             is PairRequest -> JSONObject().put("device_name", deviceName)
             is PairCommit -> JSONObject().put("device_name", deviceName).put("commitment", commitment)
             is PairNonce -> JSONObject().put("nonce", nonce)
+            is NotificationPosted -> JSONObject().put("id", id).put("app", app).put("title", title).put("text", text)
+            is NotificationDismissed -> JSONObject().put("id", id)
             PairAccept, PairReject, Ping, Pong -> null
             is Other -> throw IllegalStateException("cannot send $kind")
         }

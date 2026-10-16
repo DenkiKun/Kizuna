@@ -16,6 +16,8 @@ third-party runtime dependencies: only the Android SDK.
 - Staying connected to the paired PC: a foreground service (always with a
   visible notification, with a Disconnect action) keeps the session alive and
   reconnects on its own
+- Forwarding notifications to the PC (`NotificationListenerService`), after the
+  user grants notification access; updates and dismissals are forwarded too
 
 ## Building
 
@@ -30,7 +32,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Next MVP components
 
-- `NotificationListenerService`: captures notifications and sends `notification.posted`
 - QR scanner for pairing
 
 ## Notes

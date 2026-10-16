@@ -21,6 +21,21 @@ class ProtocolTest {
     }
 
     @Test
+    fun notificationMessagesMatchThePc() {
+        val posted = JSONObject(Message.NotificationPosted("0|app|1", "Mail", "Hi", "Body").toJson())
+        assertEquals("notification.posted", posted.getString("type"))
+        val body = posted.getJSONObject("body")
+        assertEquals("0|app|1", body.getString("id"))
+        assertEquals("Mail", body.getString("app"))
+        assertEquals("Hi", body.getString("title"))
+        assertEquals("Body", body.getString("text"))
+
+        val dismissed = JSONObject(Message.NotificationDismissed("0|app|1").toJson())
+        assertEquals("notification.dismissed", dismissed.getString("type"))
+        assertEquals("0|app|1", dismissed.getJSONObject("body").getString("id"))
+    }
+
+    @Test
     fun parsesMessagesSentByThePc() {
         assertEquals(
             Message.PairCommit("PC", "ab"),

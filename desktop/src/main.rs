@@ -116,6 +116,9 @@ fn print_event(event: Event) {
             println!("\"{name}\" sent {chars} characters to the clipboard.")
         }
         Event::ClipboardFailed(error) => eprintln!("Could not set the clipboard: {error}"),
+        Event::ClipboardSent { devices, chars } => {
+            println!("Clipboard ({chars} characters) sent to {devices} device(s).")
+        }
         Event::Paired { name, .. } => println!("Paired with \"{name}\"."),
         Event::PairingRejected => println!("Pairing rejected."),
         Event::PairingRejectedByPeer => println!("The other device rejected the pairing."),

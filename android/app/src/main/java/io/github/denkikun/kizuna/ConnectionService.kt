@@ -100,7 +100,7 @@ class ConnectionService : Service() {
                     Link.publish(LinkState.Connected(name, pc.host.hostAddress ?: ""))
                     delayMs = MIN_RETRY_MS
                     Link.sender = conn.channel::send
-                    Session(conn.channel).run()
+                    Session(conn.channel, onMessage = ::onMessage).run()
                 }
             } catch (e: Exception) {
                 if (running) Log.i(TAG, "connection to ${pc.name} ended: ${e.message}")
@@ -112,6 +112,13 @@ class ConnectionService : Service() {
             Link.publish(LinkState.Retrying(pc.name, (delayMs / 1000).toInt()))
             waitForChange(delayMs)
             delayMs = (delayMs * 2).coerceAtMost(MAX_RETRY_MS)
+        }
+    }
+
+    private fun onMessage(message: Message) {
+        when (message) {
+            is Message.ClipboardUpdate -> Clipboards.apply(this, message.text)
+            else -> Log.d(TAG, "ignored ${message.type}")
         }
     }
 
@@ -147,6 +154,10 @@ class ConnectionService : Service() {
             this, 1, Intent(this, ConnectionService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE,
         )
+        val sendClipboard = PendingIntent.getActivity(
+            this, 2, Intent(this, SendClipboardActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -155,6 +166,11 @@ class ConnectionService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
+            .apply {
+                if (state is LinkState.Connected && AppSettings.syncClipboard(this@ConnectionService)) {
+                    addAction(Notification.Action.Builder(null, getString(R.string.send_clipboard), sendClipboard).build())
+                }
+            }
             .addAction(Notification.Action.Builder(null, getString(R.string.disconnect), stop).build())
             .build()
     }

@@ -33,8 +33,14 @@
     <string name="state_retrying">Connection to %1$s lost</string>
     <string name="state_retrying_detail">Trying again in %1$d s</string>
 
-    <string name="send_clipboard">Send clipboard to computer</string>
-    <string name="clipboard_sent">Clipboard sent. Paste it on the computer.</string>
+    <string name="clipboard">Clipboard</string>
+    <string name="clipboard_on_title">Shared with your computer</string>
+    <string name="clipboard_on_detail">Text copied on the computer appears here. Text copied here is sent while Kizuna is open, or with “Send clipboard” in the notification or quick settings.</string>
+    <string name="clipboard_off_title">Not shared</string>
+    <string name="clipboard_off_detail">Turn it on to keep the clipboard in step with the computer.</string>
+    <string name="send_clipboard">Send clipboard</string>
+    <string name="clipboard_sent">Clipboard sent to the computer.</string>
+    <string name="clipboard_unchanged">The computer already has this clipboard.</string>
     <string name="clipboard_empty">There is no text in the clipboard.</string>
     <string name="clipboard_too_long">The clipboard text is too long to send.</string>
     <string name="clipboard_not_connected">Not connected to the computer.</string>

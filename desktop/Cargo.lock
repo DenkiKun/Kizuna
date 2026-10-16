@@ -2001,6 +2001,7 @@ dependencies = [
  "arboard",
  "hex",
  "iced",
+ "libc",
  "mdns-sd",
  "notify-rust",
  "rcgen",

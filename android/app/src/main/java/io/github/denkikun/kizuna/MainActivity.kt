@@ -37,7 +37,12 @@ class MainActivity : Activity() {
     private lateinit var statusTitle: TextView
     private lateinit var statusDetail: TextView
     private lateinit var statusAction: TextView
-    private lateinit var statusClipboard: TextView
+    private lateinit var clipTitle: TextView
+    private lateinit var clipDetail: TextView
+    private lateinit var clipSwitch: Switch
+    private val onClipboardChanged = ClipboardManager.OnPrimaryClipChangedListener {
+        if (Clipboards.sendCurrent(this) == Clipboards.SendResult.SENT) showMessage(getString(R.string.clipboard_sent))
+    }
     private lateinit var list: LinearLayout
     private lateinit var message: TextView
     private lateinit var notifTitle: TextView
@@ -71,9 +76,13 @@ class MainActivity : Activity() {
         Link.observe(onLinkState)
         discovery.start()
         refreshNotifications()
+        refreshClipboard()
+        // While the app is in front, what is copied here goes to the computer.
+        getSystemService(ClipboardManager::class.java).addPrimaryClipChangedListener(onClipboardChanged)
     }
 
     override fun onPause() {
+        getSystemService(ClipboardManager::class.java).removePrimaryClipChangedListener(onClipboardChanged)
         discovery.stop()
         Link.stopObserving(onLinkState)
         super.onPause()
@@ -91,7 +100,7 @@ class MainActivity : Activity() {
         drawBehindSystemBars()
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(24))
+            setPadding(dp(20), dp(12), dp(20), dp(56))
         }
         column.addView(Ui.text(this, 28f, medium = true).apply {
             text = getString(R.string.app_name)
@@ -109,6 +118,8 @@ class MainActivity : Activity() {
 
         column.addView(sectionTitle(R.string.notifications))
         column.addView(notificationsCard())
+        column.addView(sectionTitle(R.string.clipboard))
+        column.addView(clipboardCard())
 
         message = Ui.text(this, 14f, Ui.TEXT_SECONDARY).apply {
             setPadding(dp(4), dp(12), dp(4), 0)
@@ -157,15 +168,9 @@ class MainActivity : Activity() {
         texts.addView(statusDetail)
         header.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         card.addView(header)
-        statusClipboard = Ui.button(this, getString(R.string.send_clipboard), primary = true).apply {
-            setOnClickListener { sendClipboard() }
-        }
-        card.addView(statusClipboard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(16)
-        })
         statusAction = Ui.button(this, "", primary = false)
         card.addView(statusAction, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(10)
+            topMargin = dp(16)
         })
         return card
     }
@@ -214,6 +219,49 @@ class MainActivity : Activity() {
             topMargin = dp(14)
         })
         return card
+    }
+
+    /** Keeping the clipboard in step with the computer. */
+    private fun clipboardCard(): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.surface(this@MainActivity)
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+        }
+        card.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_clipboard)
+            imageTintList = android.content.res.ColorStateList.valueOf(Ui.TEXT_SECONDARY)
+            background = Ui.surface(this@MainActivity, 14)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, dp(8), 0)
+        }
+        clipTitle = Ui.text(this, 16f, medium = true)
+        clipDetail = Ui.text(this, 13f, Ui.TEXT_SECONDARY).apply { setPadding(0, dp(2), 0, 0) }
+        texts.addView(clipTitle)
+        texts.addView(clipDetail)
+        card.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        clipSwitch = Switch(this).apply {
+            val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+            thumbTintList = android.content.res.ColorStateList(states, intArrayOf(Ui.ACCENT, Ui.TEXT_SECONDARY))
+            trackTintList = android.content.res.ColorStateList(states, intArrayOf(0x66000000 or (Ui.ACCENT and 0xFFFFFF), 0x33FFFFFF))
+            setOnCheckedChangeListener { _, checked ->
+                AppSettings.setSyncClipboard(this@MainActivity, checked)
+                refreshClipboard()
+            }
+        }
+        card.addView(clipSwitch)
+        return card
+    }
+
+    private fun refreshClipboard() {
+        val on = AppSettings.syncClipboard(this)
+        if (clipSwitch.isChecked != on) clipSwitch.isChecked = on
+        clipTitle.text = getString(if (on) R.string.clipboard_on_title else R.string.clipboard_off_title)
+        clipDetail.text = getString(if (on) R.string.clipboard_on_detail else R.string.clipboard_off_detail)
     }
 
     private fun refreshNotifications() {
@@ -357,20 +405,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Sends the phone's clipboard text to the computer (reading it needs the app in front, as now). */
-    private fun sendClipboard() {
-        val clip = getSystemService(ClipboardManager::class.java).primaryClip
-        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
-        when {
-            text.isEmpty() -> showMessage(getString(R.string.clipboard_empty))
-            text.length > MAX_CLIPBOARD_CHARS -> showMessage(getString(R.string.clipboard_too_long))
-            Link.send(Message.ClipboardUpdate(text)) -> showMessage(getString(R.string.clipboard_sent))
-            else -> showMessage(getString(R.string.clipboard_not_connected))
-        }
-    }
-
     private fun setStatus(title: String, detail: String, action: String?, onAction: (() -> Unit)?) {
-        statusClipboard.visibility = if (Link.state is LinkState.Connected) View.VISIBLE else View.GONE
         statusTitle.text = title
         statusDetail.text = detail
         statusDetail.visibility = if (detail.isEmpty()) View.GONE else View.VISIBLE
@@ -567,6 +602,5 @@ class MainActivity : Activity() {
     companion object {
         private const val TAG = "Kizuna"
         private const val DEFAULT_PORT = 47820
-        private const val MAX_CLIPBOARD_CHARS = 200_000
     }
 }

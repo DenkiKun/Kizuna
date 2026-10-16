@@ -297,6 +297,9 @@ impl App {
             Event::ClipboardFailed(error) => {
                 self.log(format!("Could not set the clipboard: {error}"))
             }
+            Event::ClipboardSent { chars, .. } => {
+                self.log(format!("Clipboard sent to the phone ({chars} characters)."))
+            }
             Event::ConnectionError { peer, error } => {
                 self.log(format!("Connection from {}: {error}", peer.ip()))
             }

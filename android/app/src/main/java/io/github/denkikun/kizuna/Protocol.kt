@@ -61,6 +61,7 @@ sealed class Message(val type: String) {
                     "pair.reject" -> PairReject
                     "ping" -> Ping
                     "pong" -> Pong
+                    "clipboard.update" -> ClipboardUpdate(body!!.getString("text"))
                     else -> Other(type)
                 }
             } catch (e: JSONException) {

@@ -18,7 +18,9 @@ third-party runtime dependencies: only the Android SDK.
   reconnects on its own
 - Forwarding notifications to the PC (`NotificationListenerService`), after the
   user grants notification access; updates and dismissals are forwarded too
-- Sending the clipboard to the PC with a tap (reading it needs the app in front)
+- Clipboard in step with the PC: text copied on the PC arrives automatically; text
+  copied on the phone is sent while the app is in front, or from the
+  notification / quick settings tile (Android allows no background reads)
 
 ## Building
 

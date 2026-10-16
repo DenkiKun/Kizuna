@@ -15,6 +15,7 @@ use tokio::io::{AsyncBufRead, AsyncWrite, BufReader};
 use tokio::sync::Semaphore;
 
 use crate::broadcast;
+use crate::clipboard::{self, ClipboardSink};
 use crate::discovery::{Discovery, DiscoveryEvent, LocalDevice, RemoteDevice};
 use crate::identity::{Fingerprint, Identity};
 use crate::notify::{Notifier, Posted};
@@ -66,6 +67,12 @@ pub enum Event {
         title: String,
     },
     DesktopNotificationFailed(String),
+    /// The phone sent its clipboard; it is now this computer's clipboard.
+    ClipboardReceived {
+        name: String,
+        chars: usize,
+    },
+    ClipboardFailed(String),
     Paired {
         name: String,
     },
@@ -97,6 +104,7 @@ struct Shared {
     /// Only one pairing at a time (avoids queues of bogus requests).
     pairing_slot: Semaphore,
     notifier: Arc<Notifier>,
+    clipboard: Arc<ClipboardSink>,
 }
 
 /// Runs until `shutdown` completes, then withdraws the mDNS announcement.
@@ -157,6 +165,7 @@ pub async fn run(
         confirm,
         pairing_slot: Semaphore::new(1),
         notifier: Arc::new(Notifier::new()),
+        clipboard: Arc::new(ClipboardSink::new()),
     });
 
     tokio::pin!(shutdown);
@@ -304,6 +313,20 @@ where
                         }
                     });
                 }
+                Some(Message::ClipboardUpdate { text }) => {
+                    let text = clipboard::clean(&text);
+                    (shared.events)(Event::ClipboardReceived {
+                        name: name.to_string(),
+                        chars: text.chars().count(),
+                    });
+                    let sink = shared.clipboard.clone();
+                    let events = shared.events.clone();
+                    tokio::task::spawn_blocking(move || {
+                        if let Err(e) = sink.set_text(&text) {
+                            events(Event::ClipboardFailed(format!("{e:#}")));
+                        }
+                    });
+                }
                 Some(Message::NotificationDismissed { id }) => {
                     let notifier = shared.notifier.clone();
                     let id = Posted::cleaned(&id, "", "", "").id;
@@ -349,6 +372,7 @@ mod tests {
             confirm: Arc::new(|_| Box::pin(async { false })),
             pairing_slot: Semaphore::new(1),
             notifier: Arc::new(Notifier::new()),
+            clipboard: Arc::new(ClipboardSink::new()),
         }
     }
 
@@ -372,8 +396,12 @@ mod tests {
                 .await
                 .unwrap();
             let reply = read_message(&mut phone_read).await.unwrap();
-            let text = Message::ClipboardUpdate { text: "x".into() };
-            write_message(&mut phone_write, &text).await.unwrap();
+            let offer = Message::FileOffer {
+                name: "x".into(),
+                size: 1,
+                sha256: "ab".into(),
+            };
+            write_message(&mut phone_write, &offer).await.unwrap();
             phone_write.shutdown().await.unwrap();
             reply
         };
@@ -385,7 +413,7 @@ mod tests {
         assert!(matches!(
             &events[0],
             Event::Received {
-                kind: "clipboard.update",
+                kind: "file.offer",
                 ..
             }
         ));

@@ -33,6 +33,12 @@
     <string name="state_retrying">Connection to %1$s lost</string>
     <string name="state_retrying_detail">Trying again in %1$d s</string>
 
+    <string name="send_clipboard">Send clipboard to computer</string>
+    <string name="clipboard_sent">Clipboard sent. Paste it on the computer.</string>
+    <string name="clipboard_empty">There is no text in the clipboard.</string>
+    <string name="clipboard_too_long">The clipboard text is too long to send.</string>
+    <string name="clipboard_not_connected">Not connected to the computer.</string>
+
     <string name="notifications">Notifications</string>
     <string name="notifications_off_title">Not sent to your computer</string>
     <string name="notifications_off_detail">Kizuna needs notification access to show your phone’s notifications on the computer. Nothing is read until you allow it.</string>

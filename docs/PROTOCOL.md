@@ -108,6 +108,11 @@ After pairing, and on every later connection from a paired device, the connectio
 - The phone only sends notifications after the user grants it notification access in the system settings, and never sends ongoing, foreground-service, group-summary or secret ones.
 - The PC cleans the text (control and bidirectional characters removed, lengths bounded: 64 characters for `app`, 200 for `title`, 1000 for `text`) and escapes markup before handing it to the desktop.
 
+## Clipboard
+
+- `clipboard.update {text}`: the sender's clipboard text; the receiver makes it its own clipboard. The PC drops NUL characters and keeps at most 200 000 characters.
+- From the phone it is sent only when the user taps "Send clipboard" in the app: Android does not let apps read the clipboard in the background, and the user stays in control of what leaves the phone.
+
 ## Message types (MVP)
 
 | type | direction | description |
@@ -119,7 +124,7 @@ After pairing, and on every later connection from a paired device, the connectio
 | `ping` / `pong` | both | keeps the session alive (no body) |
 | `notification.posted` | Android → PC | new or updated notification (`id`, `app`, `title`, `text`) |
 | `notification.dismissed` | Android → PC | notification dismissed on the phone (`id`) |
-| `clipboard.update` | both | new clipboard contents |
+| `clipboard.update` | both | clipboard text (`text`); phone → PC implemented |
 | `file.offer` | both | offer to send a file (name, size, hash) |
 | `file.accept` / `file.reject` | both | reply |
 | `file.chunk` | both | block of data |

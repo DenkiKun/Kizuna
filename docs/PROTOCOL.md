@@ -110,8 +110,10 @@ After pairing, and on every later connection from a paired device, the connectio
 
 ## Clipboard
 
-- `clipboard.update {text}`: the sender's clipboard text; the receiver makes it its own clipboard. The PC drops NUL characters and keeps at most 200 000 characters.
-- From the phone it is sent only when the user taps "Send clipboard" in the app: Android does not let apps read the clipboard in the background, and the user stays in control of what leaves the phone.
+- `clipboard.update {text}`: the sender's clipboard text; the receiver makes it its own clipboard. Texts over 200 000 characters are not sent; the PC also drops NUL characters.
+- The PC sends every change of its clipboard to all connected phones (on Wayland through `wl-paste --watch`, elsewhere by polling once a second).
+- The phone applies what it receives right away. It sends its own clipboard automatically only while the app is in front, because Android lets no app read the clipboard in the background; from anywhere else the user sends it with "Send clipboard" in the connection notification or the quick settings tile.
+- Neither side sends back a text it just received, so nothing loops.
 
 ## Message types (MVP)
 

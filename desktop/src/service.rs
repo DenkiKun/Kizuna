@@ -3,19 +3,21 @@
 //! through a [`Confirm`] callback, so the same service runs behind the
 //! terminal (`kizuna-desktop daemon`) and behind the window.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
 use tokio::io::{AsyncBufRead, AsyncWrite, BufReader};
-use tokio::sync::Semaphore;
+use tokio::sync::{mpsc, Semaphore};
 
 use crate::broadcast;
-use crate::clipboard::{self, ClipboardSink};
+use crate::clipboard::{self, Clipboard};
 use crate::discovery::{Discovery, DiscoveryEvent, LocalDevice, RemoteDevice};
 use crate::identity::{Fingerprint, Identity};
 use crate::notify::{Notifier, Posted};
@@ -73,6 +75,11 @@ pub enum Event {
         chars: usize,
     },
     ClipboardFailed(String),
+    /// This computer's clipboard changed and was sent to the connected phones.
+    ClipboardSent {
+        devices: usize,
+        chars: usize,
+    },
     Paired {
         name: String,
     },
@@ -104,7 +111,11 @@ struct Shared {
     /// Only one pairing at a time (avoids queues of bogus requests).
     pairing_slot: Semaphore,
     notifier: Arc<Notifier>,
-    clipboard: Arc<ClipboardSink>,
+    clipboard: Arc<Clipboard>,
+    /// Outgoing channel of every open session, for messages that are not
+    /// replies (e.g. clipboard changes).
+    sessions: Mutex<HashMap<u64, mpsc::UnboundedSender<Message>>>,
+    next_session: AtomicU64,
 }
 
 /// Runs until `shutdown` completes, then withdraws the mDNS announcement.
@@ -165,7 +176,25 @@ pub async fn run(
         confirm,
         pairing_slot: Semaphore::new(1),
         notifier: Arc::new(Notifier::new()),
-        clipboard: Arc::new(ClipboardSink::new()),
+        clipboard: Arc::new(Clipboard::new()),
+        sessions: Mutex::new(HashMap::new()),
+        next_session: AtomicU64::new(0),
+    });
+
+    // Whatever is copied on this computer goes to every connected phone.
+    let watcher = shared.clone();
+    shared.clipboard.clone().watch(move |text| {
+        let sessions = watcher.sessions.lock().unwrap_or_else(|e| e.into_inner());
+        if sessions.is_empty() {
+            return;
+        }
+        for sender in sessions.values() {
+            let _ = sender.send(Message::ClipboardUpdate { text: text.clone() });
+        }
+        (watcher.events)(Event::ClipboardSent {
+            devices: sessions.len(),
+            chars: text.chars().count(),
+        });
     });
 
     tokio::pin!(shutdown);
@@ -209,7 +238,7 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, shared: &Sha
             fingerprint,
             peer,
         });
-        return session(&mut reader, &mut writer, &device.name, fingerprint, shared).await;
+        return session(&mut reader, writer, &device.name, fingerprint, shared).await;
     }
 
     // An unknown device may only request pairing.
@@ -255,7 +284,7 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, shared: &Sha
                 fingerprint,
                 peer,
             });
-            session(&mut reader, &mut writer, &peer_name, fingerprint, shared).await
+            session(&mut reader, writer, &peer_name, fingerprint, shared).await
         }
         Outcome::RejectedLocally => {
             (shared.events)(Event::PairingRejected);
@@ -268,20 +297,37 @@ async fn handle_connection(conn: tls::Connection, peer: SocketAddr, shared: &Sha
     }
 }
 
-/// Connection with a paired device: answers `ping` and reports the other
-/// messages (the features themselves come next). Ends when the device closes
-/// the connection or stays silent for [`IDLE_TIMEOUT`].
+/// Connection with a paired device: answers `ping`, shows notifications,
+/// exchanges the clipboard and reports other messages. Ends when the device
+/// closes the connection or stays silent for [`IDLE_TIMEOUT`].
 async fn session<R, W>(
     reader: &mut R,
-    writer: &mut W,
+    mut writer: W,
     name: &str,
     fingerprint: Fingerprint,
     shared: &Shared,
 ) -> Result<()>
 where
     R: AsyncBufRead + Unpin,
-    W: AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin + Send + 'static,
 {
+    // Writes go through a task of their own, so the clipboard watcher (and
+    // replies) can send without interrupting a read half-way through a line.
+    let (outgoing, mut queue) = mpsc::unbounded_channel::<Message>();
+    let id = shared.next_session.fetch_add(1, Ordering::Relaxed);
+    shared
+        .sessions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id, outgoing.clone());
+    let writer_task = tokio::spawn(async move {
+        while let Some(message) = queue.recv().await {
+            if write_message(&mut writer, &message).await.is_err() {
+                break;
+            }
+        }
+    });
+
     let result = async {
         loop {
             let message = tokio::time::timeout(IDLE_TIMEOUT, read_message(reader))
@@ -289,7 +335,11 @@ where
                 .map_err(|_| anyhow!("no activity for {} s", IDLE_TIMEOUT.as_secs()))??;
             match message {
                 None => return Ok(()),
-                Some(Message::Ping) => write_message(writer, &Message::Pong).await?,
+                Some(Message::Ping) => {
+                    if outgoing.send(Message::Pong).is_err() {
+                        bail!("the connection is no longer writable");
+                    }
+                }
                 Some(Message::Pong) => {}
                 Some(Message::NotificationPosted {
                     id,
@@ -340,6 +390,13 @@ where
         }
     }
     .await;
+    shared
+        .sessions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&id);
+    drop(outgoing);
+    writer_task.abort();
     (shared.events)(Event::Disconnected {
         name: name.to_string(),
         fingerprint,
@@ -359,7 +416,6 @@ pub fn device_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use tokio::io::{duplex, split, AsyncWriteExt};
 
     fn shared(events: Arc<Mutex<Vec<Event>>>) -> Shared {
@@ -372,7 +428,9 @@ mod tests {
             confirm: Arc::new(|_| Box::pin(async { false })),
             pairing_slot: Semaphore::new(1),
             notifier: Arc::new(Notifier::new()),
-            clipboard: Arc::new(ClipboardSink::new()),
+            clipboard: Arc::new(Clipboard::new()),
+            sessions: Mutex::new(HashMap::new()),
+            next_session: AtomicU64::new(0),
         }
     }
 
@@ -385,12 +443,12 @@ mod tests {
         let events = Arc::new(Mutex::new(Vec::new()));
         let shared = shared(events.clone());
         let (pc_side, phone_side) = duplex(4096);
-        let (pc_read, mut pc_write) = split(pc_side);
+        let (pc_read, pc_write) = split(pc_side);
         let (phone_read, mut phone_write) = split(phone_side);
         let mut pc_read = BufReader::new(pc_read);
         let mut phone_read = BufReader::new(phone_read);
 
-        let pc = async { session(&mut pc_read, &mut pc_write, "Phone", phone(), &shared).await };
+        let pc = async { session(&mut pc_read, pc_write, "Phone", phone(), &shared).await };
         let phone = async {
             write_message(&mut phone_write, &Message::Ping)
                 .await
@@ -426,11 +484,11 @@ mod tests {
         let events = Arc::new(Mutex::new(Vec::new()));
         let shared = shared(events.clone());
         let (pc_side, _phone_side) = duplex(4096);
-        let (pc_read, mut pc_write) = split(pc_side);
+        let (pc_read, pc_write) = split(pc_side);
         let mut pc_read = BufReader::new(pc_read);
 
         let started = tokio::time::Instant::now();
-        let err = session(&mut pc_read, &mut pc_write, "Phone", phone(), &shared)
+        let err = session(&mut pc_read, pc_write, "Phone", phone(), &shared)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("no activity"), "{err}");

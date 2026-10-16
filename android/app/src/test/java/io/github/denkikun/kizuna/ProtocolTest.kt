@@ -42,7 +42,8 @@ class ProtocolTest {
             Message.parse("""{"type":"pair.commit","body":{"device_name":"PC","commitment":"ab"}}"""),
         )
         assertEquals(Message.PairReject, Message.parse("""{"type":"pair.reject"}"""))
-        assertEquals(Message.Other("clipboard.update"), Message.parse("""{"type":"clipboard.update","body":{"text":"x"}}"""))
+        assertEquals(Message.ClipboardUpdate("hi"), Message.parse("""{"type":"clipboard.update","body":{"text":"hi"}}"""))
+        assertEquals(Message.Other("file.offer"), Message.parse("""{"type":"file.offer","body":{"name":"x"}}"""))
     }
 
     @Test(expected = ProtocolException::class)
